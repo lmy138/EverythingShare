@@ -1,8 +1,16 @@
 # Changelog
 
+## 0.2.0 - 2026-07-24
+
+- Public open-source release.
+- Added complete Chinese and English README guides.
+- Added sanitized desktop, mobile, and public-share demo images.
+- Adopted the slogan “Everything版本地百度网盘”.
+- Fixed the native result header remaining visible in the mobile card layout.
+
 ## 0.1.0 - 2026-07-24
 
-- Initial private preview.
+- Initial preview.
 - File and folder sharing through Everything HTTP Server.
 - Extraction codes, expiration and download limits.
 - Range downloads and ZIP streaming/cache.

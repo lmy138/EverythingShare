@@ -331,7 +331,7 @@ tr:last-child td { border-bottom: 0; }
   table,tbody { display: block; width: 100% !important; border: 0; border-radius: 0; overflow: visible; background: transparent; box-shadow: none; }
   table > tbody > tr:first-child { display: block; margin-bottom: 8px; border: 0; background: transparent; box-shadow: none; }
   table > tbody > tr:first-child td { display: block; padding: 4px; border: 0; }
-  tr:has(.nameheader) { display: none; }
+  table > tbody > tr:has(.nameheader) { display: none; }
   tr.trdata1,tr.trdata2 {
     display: grid;
     grid-template-columns: minmax(0,1fr) auto;

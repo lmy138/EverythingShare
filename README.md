@@ -1,6 +1,14 @@
-# EverythingShare
+<h1 align="center">EverythingShare</h1>
 
-为 Windows 文件搜索工具 [Everything](https://www.voidtools.com/) 增加安全、易用的网页分享能力。
+<p align="center"><strong>Everything版本地百度网盘</strong></p>
+
+<p align="center">
+  把 Windows 上的 Everything 变成安全、轻量、适合家庭使用的自托管文件分享服务。
+</p>
+
+<p align="center">
+  简体中文 · <a href="README.en.md">English</a>
+</p>
 
 EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件，并提供：
 
@@ -16,7 +24,18 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 - Logto、Authentik、Keycloak 等通用 OIDC 登录
 
 > [!IMPORTANT]
-> EverythingShare 是非官方社区项目，与 voidtools 没有隶属或背书关系。项目不包含 Everything 安装包，使用者需要自行安装 Everything。
+> EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。项目不包含 Everything 安装包，使用者需要自行安装 Everything。
+
+## 效果演示
+
+![桌面端搜索、文件图标和三点操作菜单](docs/images/demo-search-desktop.png)
+
+<p align="center">
+  <img src="docs/images/demo-search-mobile.png" width="36%" alt="移动端紧凑搜索结果和三点操作菜单">
+  <img src="docs/images/demo-public-share.png" width="60%" alt="公开文件夹分享页面">
+</p>
+
+所有 Demo 数据均为虚构内容，不包含真实文件名、账号、域名或服务器信息。
 
 ## 工作方式
 
@@ -63,8 +82,6 @@ flowchart LR
 git clone https://github.com/lmy138/EverythingShare.git
 cd EverythingShare
 ```
-
-仓库目前为私人仓库时，需要先登录有权限的 GitHub 账号。
 
 ### 3. 运行引导脚本
 
