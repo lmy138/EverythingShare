@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/share-gateway .
 
-FROM alpine:3.23
+FROM alpine:3.24
 LABEL org.opencontainers.image.title="EverythingShare" \
       org.opencontainers.image.description="A secure sharing gateway for the Everything HTTP server" \
       org.opencontainers.image.source="https://github.com/lmy138/EverythingShare" \
