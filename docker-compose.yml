@@ -1,0 +1,61 @@
+name: everythingshare
+
+services:
+  gateway:
+    build:
+      context: .
+    image: everythingshare:local
+    restart: unless-stopped
+    environment:
+      LISTEN_ADDR: "0.0.0.0:8080"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL in .env}
+      EVERYTHING_BASE_URL: ${EVERYTHING_BASE_URL:-http://host.docker.internal:8081}
+      EVERYTHING_AUTH_HEADER: ${EVERYTHING_AUTH_HEADER:?Run scripts/setup.ps1}
+      SESSION_SECRET: ${SESSION_SECRET:?Run scripts/setup.ps1}
+      ADMIN_SHARED_KEY: ${ADMIN_SHARED_KEY:?Run scripts/setup.ps1}
+      DATABASE_PATH: "/data/share-gateway.db"
+      CACHE_DIR: "/cache"
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-true}
+      ZIP_CACHE_THRESHOLD_BYTES: ${ZIP_CACHE_THRESHOLD_BYTES:-5368709120}
+      ZIP_CACHE_MAX_BYTES: ${ZIP_CACHE_MAX_BYTES:-53687091200}
+      ZIP_CACHE_TTL_HOURS: ${ZIP_CACHE_TTL_HOURS:-24}
+      ZIP_CACHE_MIN_FREE_BYTES: ${ZIP_CACHE_MIN_FREE_BYTES:-21474836480}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - gateway-data:/data
+      - gateway-cache:/cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - backend
+
+  edge:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      EVERYTHING_HOST: ${EVERYTHING_HOST:?Set EVERYTHING_HOST in .env}
+      SHARE_HOST: ${SHARE_HOST:?Set SHARE_HOST in .env}
+      EVERYTHING_BASE_URL: ${EVERYTHING_BASE_URL:-http://host.docker.internal:8081}
+      EVERYTHING_AUTH_HEADER: ${EVERYTHING_AUTH_HEADER:?Run scripts/setup.ps1}
+      ADMIN_SHARED_KEY: ${ADMIN_SHARED_KEY:?Run scripts/setup.ps1}
+    ports:
+      - "${EDGE_BIND:-127.0.0.1}:${EDGE_PORT:-8088}:8080"
+    volumes:
+      - ./deploy/nginx/basic.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./secrets/htpasswd:/etc/nginx/secrets/htpasswd:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  gateway-data:
+  gateway-cache:

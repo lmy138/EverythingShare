@@ -1,0 +1,12 @@
+.git
+.github
+.env
+data
+cache
+logs
+secrets
+docs
+scripts
+deploy
+*.db
+*.log

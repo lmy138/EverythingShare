@@ -1,0 +1,103 @@
+server_tokens off;
+
+map $uri $safe_uri {
+    ~^/s/                  /s/[redacted];
+    ~^/d/                  /d/[redacted];
+    ~^/api/v1/public/      /api/v1/public/[redacted];
+    default                $uri;
+}
+
+map $http_x_forwarded_proto $forwarded_proto {
+    default $scheme;
+    http    http;
+    https   https;
+}
+
+log_format safe '$remote_addr - $remote_user [$time_local] '
+                '"$request_method $safe_uri $server_protocol" $status $body_bytes_sent '
+                '"$http_referer" "$http_user_agent"';
+access_log /var/log/nginx/access.log safe;
+
+upstream share_gateway {
+    server gateway:8080;
+    keepalive 16;
+}
+
+server {
+    listen 8080 default_server;
+    server_name _;
+    return 404;
+}
+
+server {
+    listen 8080;
+    server_name ${EVERYTHING_HOST};
+    client_max_body_size 32k;
+
+    auth_basic "EverythingShare";
+    auth_basic_user_file /etc/nginx/secrets/htpasswd;
+
+    location /share-api/ {
+        proxy_pass http://share_gateway;
+        proxy_set_header X-Share-Admin-Key "${ADMIN_SHARED_KEY}";
+        proxy_set_header X-Auth-Request-User $remote_user;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_buffering off;
+    }
+
+    location /share-admin/ {
+        proxy_pass http://share_gateway;
+        proxy_set_header X-Share-Admin-Key "${ADMIN_SHARED_KEY}";
+        proxy_set_header X-Auth-Request-User $remote_user;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass ${EVERYTHING_BASE_URL};
+        proxy_http_version 1.1;
+        proxy_redirect off;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header Accept-Encoding "";
+        proxy_set_header Authorization "${EVERYTHING_AUTH_HEADER}";
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        sub_filter_once off;
+        sub_filter '<meta name="viewport" content="width=512">' '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">';
+        sub_filter '</body>' '<script src="/share-ui.js" defer></script></body>';
+    }
+}
+
+server {
+    listen 8080;
+    server_name ${SHARE_HOST};
+    client_max_body_size 32k;
+
+    location / {
+        proxy_pass http://share_gateway;
+        proxy_http_version 1.1;
+        proxy_redirect off;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+}

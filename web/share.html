@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>文件分享</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body data-token="{{TOKEN}}">
+  <main class="shell">
+    <section id="verifyCard" class="card verify">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 3.5h6.5l4.6 4.6v5.2"/><path d="M13.2 3.8v4.8H18"/><path d="M10.1 18.2 8.4 20a2.8 2.8 0 0 1-4-4l2.2-2.2a2.8 2.8 0 0 1 4-.1"/><path d="m13.9 12.8 1.7-1.7a2.8 2.8 0 1 1 4 4l-2.2 2.2a2.8 2.8 0 0 1-4 .1"/><path d="m9.5 15.5 5-5"/></svg></div>
+        <div><h1>访问文件分享</h1><p class="muted">请输入分享者提供的提取码</p></div>
+      </div>
+      <form id="verifyForm">
+        <div class="field">
+          <label for="code">提取码</label>
+          <input id="code" class="code-input" name="code" minlength="4" maxlength="12" autocomplete="one-time-code" autocapitalize="characters" required>
+        </div>
+        <div class="actions"><button class="primary" type="submit">查看分享</button></div>
+        <p id="verifyMessage" class="message" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="shareCard" class="card hidden">
+      <header class="share-head">
+        <div>
+          <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 3.5h6.5l4.6 4.6v5.2"/><path d="M13.2 3.8v4.8H18"/><path d="M10.1 18.2 8.4 20a2.8 2.8 0 0 1-4-4l2.2-2.2a2.8 2.8 0 0 1 4-.1"/><path d="m13.9 12.8 1.7-1.7a2.8 2.8 0 1 1 4 4l-2.2 2.2a2.8 2.8 0 0 1-4 .1"/><path d="m9.5 15.5 5-5"/></svg></div><h1 id="shareTitle">文件分享</h1></div>
+          <div class="stats"><span id="shareExpiry" class="stat"></span><span id="shareDownloads" class="stat"></span></div>
+        </div>
+        <button id="systemShare" class="secondary" type="button">分享链接</button>
+      </header>
+      <div id="folderToolbar" class="toolbar hidden">
+        <button id="goUp" class="secondary" type="button">返回上级</button>
+        <div id="breadcrumb" class="breadcrumb">根目录</div>
+        <button id="downloadZip" class="primary" type="button">打包下载</button>
+      </div>
+      <div id="singleFile" class="toolbar hidden">
+        <div class="breadcrumb"><span id="singleIcon" class="file-icon file" aria-hidden="true"></span><span id="singleName"></span></div>
+        <button id="downloadSingle" class="primary" type="button">下载文件</button>
+      </div>
+      <div id="fileList" class="file-list"></div>
+      <p id="shareMessage" class="message" role="alert"></p>
+    </section>
+  </main>
+  <script src="/assets/share.js"></script>
+</body>
+</html>

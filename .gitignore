@@ -1,0 +1,16 @@
+.env
+data/
+cache/
+logs/
+backups/
+secrets/*
+!secrets/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.zip
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

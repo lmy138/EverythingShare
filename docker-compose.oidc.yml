@@ -1,0 +1,42 @@
+services:
+  edge:
+    depends_on:
+      gateway:
+        condition: service_healthy
+      oauth2-proxy:
+        condition: service_started
+    volumes:
+      - ./deploy/nginx/oidc.conf.template:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - backend
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
+    restart: unless-stopped
+    environment:
+      OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
+      OAUTH2_PROXY_PROVIDER: "oidc"
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?Set OIDC_ISSUER_URL in .env}
+      OAUTH2_PROXY_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID in .env}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET in .env}
+      OAUTH2_PROXY_REDIRECT_URL: ${OIDC_REDIRECT_URL:?Set OIDC_REDIRECT_URL in .env}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OIDC_COOKIE_SECRET:?Run scripts/setup.ps1 -AuthMode Oidc}
+      OAUTH2_PROXY_SCOPE: "openid profile email"
+      OAUTH2_PROXY_CODE_CHALLENGE_METHOD: "S256"
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_UPSTREAMS: "static://202"
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "false"
+      OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: "false"
+      OAUTH2_PROXY_SET_AUTHORIZATION_HEADER: "false"
+      OAUTH2_PROXY_COOKIE_NAME: "__Host-everythingshare_oauth2"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_HTTPONLY: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
+      OAUTH2_PROXY_COOKIE_PATH: "/"
+      OAUTH2_PROXY_COOKIE_EXPIRE: "12h"
+      OAUTH2_PROXY_COOKIE_REFRESH: "1h"
+    networks:
+      - backend

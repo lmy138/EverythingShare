@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>分享管理</title>
+  <link rel="stylesheet" href="/share-admin/assets/app.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="admin-topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 3.5h6.5l4.6 4.6v5.2"/><path d="M13.2 3.8v4.8H18"/><path d="M10.1 18.2 8.4 20a2.8 2.8 0 0 1-4-4l2.2-2.2a2.8 2.8 0 0 1 4-.1"/><path d="m13.9 12.8 1.7-1.7a2.8 2.8 0 1 1 4 4l-2.2 2.2a2.8 2.8 0 0 1-4 .1"/><path d="m9.5 15.5 5-5"/></svg></div>
+        <div><h1>Everything 分享管理</h1><p class="muted">管理当前有效的外部分享</p></div>
+      </div>
+      <div class="actions"><a class="button secondary" href="/">返回搜索</a><button id="reload" class="secondary">刷新列表</button></div>
+    </header>
+    <p id="summary" class="admin-summary muted" aria-live="polite"></p>
+    <section id="list" class="admin-list" aria-live="polite"></section>
+    <p id="message" class="message" role="alert"></p>
+  </main>
+  <script src="/share-admin/assets/admin.js"></script>
+</body>
+</html>
