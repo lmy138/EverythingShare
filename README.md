@@ -37,6 +37,19 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 
 所有 Demo 数据均为虚构内容，不包含真实文件名、账号、域名或服务器信息。
 
+## Windows 单文件版：下载即用
+
+只想先体验 BasicAuth、搜索、分享和提取码时，可以直接下载 Windows 单文件包，不需要 Docker：
+
+1. 从 [Releases](https://github.com/lmy138/EverythingShare/releases) 下载 `windows-amd64` ZIP。
+2. 解压后双击 `EverythingShare.exe`。
+3. 首次启动会自动进入向导，填写 Everything HTTP 地址和账号密码。
+4. 创建 EverythingShare 的 BasicAuth 账号；向导完成后程序会启动并自动打开浏览器。
+
+程序默认只监听 `127.0.0.1:8088`，自动生成随机会话密钥、内部管理密钥、SQLite 数据库和 ZIP 缓存目录。BasicAuth 密码只保存 BCrypt 哈希，Everything HTTP 密码保存在受 ACL 保护的本地 `everythingshare.json` 中。
+
+完整说明见 [Windows 单文件快速入门](docs/windows-quickstart.zh-CN.md)。公网 HTTPS、OIDC 和双域名隔离仍推荐使用后面的 Docker 部署方案。
+
 ## 工作方式
 
 ```mermaid
@@ -57,8 +70,8 @@ flowchart LR
 
 - Windows 10/11 或 Windows Server
 - Everything 1.4 或 1.5
-- Docker Desktop，使用 Linux containers
-- PowerShell 5.1 或 PowerShell 7
+- 单文件体验版无需 Docker
+- Docker 部署需要 Docker Desktop（Linux containers）以及 PowerShell 5.1 或 PowerShell 7
 - 生产环境需要两个域名和一个支持 HTTPS 的反向代理
 
 ## 十分钟本地体验

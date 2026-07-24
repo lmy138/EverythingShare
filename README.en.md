@@ -37,6 +37,19 @@ EverythingShare does not duplicate your files. It reads them through Everything 
 
 All demo data is fictional. The screenshots contain no real file names, accounts, domains, or server details.
 
+## Single-file Windows edition
+
+To evaluate Basic Auth, search, sharing, and extraction codes without Docker:
+
+1. Download the `windows-amd64` ZIP from [Releases](https://github.com/lmy138/EverythingShare/releases).
+2. Extract it and double-click `EverythingShare.exe`.
+3. The first-run wizard asks for the Everything HTTP address and credentials.
+4. Create an EverythingShare Basic Auth account. The program starts and opens the browser when the wizard finishes.
+
+The program binds to `127.0.0.1:8088` by default and generates random session keys, an internal management key, the SQLite database, and the ZIP cache directory. The Basic Auth password is stored only as a BCrypt hash. The Everything HTTP password remains in the ACL-protected local `everythingshare.json`.
+
+See the [single-file Windows quick start](docs/windows-quickstart.en.md). The Docker deployment below remains the recommended option for public HTTPS, OIDC, and separate protected/public host names.
+
 ## Architecture
 
 ```mermaid
@@ -57,8 +70,8 @@ flowchart LR
 
 - Windows 10/11 or Windows Server
 - Everything 1.4 or 1.5
-- Docker Desktop using Linux containers
-- Windows PowerShell 5.1 or PowerShell 7
+- no Docker is required for the single-file evaluation edition
+- Docker deployment requires Docker Desktop with Linux containers and Windows PowerShell 5.1 or PowerShell 7
 - two domain names and an HTTPS reverse proxy for production use
 
 ## Ten-minute local quick start

@@ -8,5 +8,7 @@ secrets
 docs
 scripts
 deploy
+dist
+packaging
 *.db
 *.log

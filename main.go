@@ -31,7 +31,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -62,6 +61,10 @@ type config struct {
 	ZipCacheMax       int64
 	ZipTTL            time.Duration
 	ZipMinFree        uint64
+	Standalone        bool
+	BasicAuthUsername string
+	BasicAuthHash     []byte
+	OpenBrowser       bool
 }
 
 type app struct {
@@ -139,6 +142,12 @@ type verifyRequest struct {
 }
 
 func main() {
+	if handled, err := handleStandaloneCommand(os.Args[1:]); handled {
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		addr := env("LISTEN_ADDR", "0.0.0.0:8080")
 		_, port, err := net.SplitHostPort(addr)
@@ -195,13 +204,26 @@ func main() {
 	}
 	go a.cacheJanitor()
 
+	handler := a.routes()
+	if cfg.Standalone {
+		handler, err = a.standaloneRoutes()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           a.routes(),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 	log.Printf("everything share gateway listening on %s", cfg.ListenAddr)
+	if cfg.Standalone {
+		log.Printf("open %s in your browser", cfg.PublicBaseURL)
+		if cfg.OpenBrowser {
+			go openBrowserAfterStart(cfg.PublicBaseURL)
+		}
+	}
 	log.Fatal(server.ListenAndServe())
 }
 
@@ -232,6 +254,9 @@ func backupDatabase(source, target string) error {
 }
 
 func loadConfig() (config, error) {
+	if !hasGatewayEnvironment() {
+		return loadStandaloneConfig(standaloneConfigPath(os.Args[1:]))
+	}
 	session, err := decodeSecret(os.Getenv("SESSION_SECRET"))
 	if err != nil || len(session) < 32 {
 		return config{}, errors.New("SESSION_SECRET must contain at least 32 random bytes")
@@ -1143,11 +1168,11 @@ func (a *app) cachePath(shareID string) string {
 }
 
 func (a *app) cacheHasSpace() bool {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(a.cfg.CacheDir, &stat); err != nil {
+	available, err := availableDiskBytes(a.cfg.CacheDir)
+	if err != nil {
 		return false
 	}
-	return stat.Bavail*uint64(stat.Bsize) >= a.cfg.ZipMinFree
+	return available >= a.cfg.ZipMinFree
 }
 
 func (a *app) cacheJanitor() {

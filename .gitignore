@@ -10,6 +10,9 @@ secrets/*
 *.db-wal
 *.log
 *.zip
+*.exe
+everythingshare.json
+dist/
 .idea/
 .vscode/
 .DS_Store

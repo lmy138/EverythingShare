@@ -2,10 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestCleanWindowsPath(t *testing.T) {
@@ -185,5 +189,113 @@ func TestIssuedTicketSurvivesDownloadLimitButNotRevocation(t *testing.T) {
 	s.Status = "revoked"
 	if shareTicketUsable(s) {
 		t.Fatal("revocation must invalidate an issued ticket immediately")
+	}
+}
+
+func TestStandaloneProxyRequiresBasicAuthAndInjectsUI(t *testing.T) {
+	var upstreamAuthorization string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamAuthorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><head><meta name="viewport" content="width=512"></head><body>Everything</body></html>`))
+	}))
+	defer upstream.Close()
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("standalone-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app{cfg: config{
+		EverythingBaseURL: upstream.URL,
+		EverythingAuth:    "Basic upstream-credential",
+		AdminKey:          strings.Repeat("a", 32),
+		Standalone:        true,
+		BasicAuthUsername: "admin",
+		BasicAuthHash:     passwordHash,
+	}}
+	handler, err := a.standaloneRoutes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthorized.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.SetBasicAuth("admin", "standalone-password")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	if upstreamAuthorization != "Basic upstream-credential" {
+		t.Fatalf("upstream authorization was not replaced: %q", upstreamAuthorization)
+	}
+	if !strings.Contains(response.Body.String(), `/share-ui.js`) {
+		t.Fatal("standalone proxy did not inject the sharing UI")
+	}
+	if !strings.Contains(response.Body.String(), `width=device-width`) {
+		t.Fatal("standalone proxy did not replace the fixed viewport")
+	}
+}
+
+func TestStandalonePublicSharePathsDoNotRequireBasicAuth(t *testing.T) {
+	for _, requestPath := range []string{
+		"/healthz",
+		"/s/example",
+		"/d/example",
+		"/api/v1/public/shares/example/verify",
+		"/assets/app.css",
+	} {
+		if !isPublicGatewayPath(requestPath) {
+			t.Fatalf("expected public path: %s", requestPath)
+		}
+	}
+	for _, requestPath := range []string{"/", "/share-admin/", "/share-api/v1/shares", "/main.css"} {
+		if isPublicGatewayPath(requestPath) {
+			t.Fatalf("expected protected path: %s", requestPath)
+		}
+	}
+}
+
+func TestLoadStandaloneConfigGeneratesRuntimeDefaults(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("standalone-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "everythingshare.json")
+	fileConfig := standaloneFileConfig{
+		ConfigVersion:         standaloneConfigVersion,
+		ListenAddr:            "127.0.0.1:8088",
+		PublicBaseURL:         "http://127.0.0.1:8088",
+		EverythingBaseURL:     "http://127.0.0.1:8081",
+		EverythingUsername:    "everything",
+		EverythingPassword:    "upstream-password",
+		BasicAuthUsername:     "admin",
+		BasicAuthPasswordHash: string(passwordHash),
+		SessionSecret:         randomEncodedBytes(32),
+		AdminSharedKey:        randomEncodedBytes(36),
+		DatabasePath:          filepath.Join("data", "share-gateway.db"),
+		CacheDir:              "cache",
+		OpenBrowser:           true,
+	}
+	if err := writeStandaloneConfig(configPath, fileConfig); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadStandaloneConfig(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Standalone || cfg.BasicAuthUsername != "admin" || !cfg.OpenBrowser {
+		t.Fatalf("unexpected standalone runtime config: %+v", cfg)
+	}
+	if !filepath.IsAbs(cfg.DatabasePath) || !filepath.IsAbs(cfg.CacheDir) {
+		t.Fatal("standalone data paths must be resolved relative to the configuration file")
+	}
+	if cfg.EverythingAuth != "Basic ZXZlcnl0aGluZzp1cHN0cmVhbS1wYXNzd29yZA==" {
+		t.Fatal("Everything credentials were not converted to an upstream Basic header")
 	}
 }

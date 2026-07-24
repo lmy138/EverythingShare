@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added a single-file Windows edition with no Docker runtime requirement.
+- Added a first-run wizard for Everything connectivity and local Basic Auth.
+- Added an embedded Everything reverse proxy, UI injection, and automatic browser launch.
+- Added reproducible Windows AMD64/ARM64 release packaging and bilingual quick-start guides.
+
 ## 0.2.0 - 2026-07-24
 
 - Public open-source release.
