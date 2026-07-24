@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-07-24
 
 - Added a single-file Windows edition with no Docker runtime requirement.
 - Added a first-run wizard for Everything connectivity and local Basic Auth.
