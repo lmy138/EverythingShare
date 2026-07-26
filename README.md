@@ -25,7 +25,7 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 
 > [!IMPORTANT]
 > EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。项目不包含 Everything 安装包，使用者需要自行安装 Everything。
-
+演示视频： https://www.bilibili.com/video/av116980967284172/?vd_source=1223a25110a50902469a1bc929014cc9 
 ## 效果演示
 
 ![桌面端搜索、文件图标和三点操作菜单](docs/images/demo-search-desktop.png)
