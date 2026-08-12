@@ -3,7 +3,7 @@
 <p align="center"><strong>Everything版本地百度网盘</strong></p>
 
 <p align="center">
-  把 Windows 上的 Everything 变成安全、轻量、适合家企业、个人、家庭用的自托管文件分享服务。
+  把 Windows 上的 Everything 变成安全、轻量、适合各中小企业、效率个人、达人家庭用的自托管文件分享服务。
 </p>
 
 <p align="center">
