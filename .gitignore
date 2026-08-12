@@ -11,6 +11,7 @@ secrets/*
 *.log
 *.zip
 *.exe
+!third_party/everything/Everything.exe.bin
 everythingshare.json
 dist/
 .idea/

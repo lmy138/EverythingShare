@@ -39,8 +39,42 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
+  windows-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Fetch and verify official Everything portable payload
+        run: |
+          archive="Everything-1.4.1.1032.x64.zip"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "/tmp/${archive}" \
+            "https://www.voidtools.com/${archive}"
+          echo "698df475ec44e638f66f1b6a32d28fea613cec78d3b6310e6abe53431eeb940c  /tmp/${archive}" | sha256sum --check --strict
+          unzip -p "/tmp/${archive}" Everything.exe > third_party/everything/Everything.exe.bin
+          echo "f191f756996a14a11e5445fa7103d302efd510cf2fbf920e6c0c8ed51d512e36  third_party/everything/Everything.exe.bin" | sha256sum --check --strict
+      - name: Build one-file demo
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          output="EverythingShare-Demo-${GITHUB_REF_NAME}-windows-x64.exe"
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${version} -X main.edition=demo" \
+            -o "dist/${output}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-demo
+          path: dist/*.exe
+          if-no-files-found: error
+
   release:
-    needs: windows
+    needs: [windows, windows-demo]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -50,7 +84,7 @@ jobs:
           merge-multiple: true
       - name: Create checksums
         working-directory: dist
-        run: sha256sum ./*.zip > SHA256SUMS.txt
+        run: sha256sum ./*.zip ./*.exe > SHA256SUMS.txt
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

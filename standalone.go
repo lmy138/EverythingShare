@@ -29,6 +29,7 @@ import (
 const standaloneConfigVersion = 1
 
 var version = "dev"
+var edition = "standard"
 
 //go:embed everything-ui/main.css everything-ui/share-ui.js
 var everythingUIFiles embed.FS
@@ -440,12 +441,20 @@ func (a *app) standaloneRoutes() (http.Handler, error) {
 			gateway.ServeHTTP(w, request)
 			return
 		case isStandaloneAssetPath(request.URL.Path):
-			if !a.requireBasicAuth(w, request) {
+			if !a.cfg.DemoMode && !a.requireBasicAuth(w, request) {
 				return
 			}
 			serveEverythingUIAsset(w, request)
 			return
 		case isAdminGatewayPath(request.URL.Path):
+			if a.cfg.DemoMode {
+				adminRequest := request.Clone(request.Context())
+				adminRequest.Header = request.Header.Clone()
+				adminRequest.Header.Set("X-Share-Admin-Key", a.cfg.AdminKey)
+				adminRequest.Header.Set("X-Auth-Request-User", "demo-user")
+				gateway.ServeHTTP(w, adminRequest)
+				return
+			}
 			username, ok := a.basicAuthUser(w, request)
 			if !ok {
 				return
@@ -457,7 +466,7 @@ func (a *app) standaloneRoutes() (http.Handler, error) {
 			gateway.ServeHTTP(w, adminRequest)
 			return
 		default:
-			if !a.requireBasicAuth(w, request) {
+			if !a.cfg.DemoMode && !a.requireBasicAuth(w, request) {
 				return
 			}
 			proxy.ServeHTTP(w, request)

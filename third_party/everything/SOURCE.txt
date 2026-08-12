@@ -1,0 +1,6 @@
+Everything 1.4.1.1032 (x64 Portable)
+Copyright (C) David Carpenter / voidtools
+Official source: https://www.voidtools.com/Everything-1.4.1.1032.x64.zip
+Official SHA256 (archive): 698df475ec44e638f66f1b6a32d28fea613cec78d3b6310e6abe53431eeb940c
+Embedded Everything.exe SHA256: f191f756996a14a11e5445fa7103d302efd510cf2fbf920e6c0c8ed51d512e36
+License: MIT and bundled third-party notices; see License.txt.

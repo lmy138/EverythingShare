@@ -24,7 +24,7 @@ EverythingShare does not duplicate your files. It reads them through Everything 
 - generic OIDC login for Logto, Authentik, Keycloak, and other providers
 
 > [!IMPORTANT]
-> EverythingShare is an unofficial community project and is not affiliated with or endorsed by voidtools, Everything, Baidu, or Baidu Netdisk. The Chinese slogan describes the intended user experience only. Everything itself is not bundled and must be installed separately.
+> EverythingShare is an unofficial community project and is not affiliated with or endorsed by voidtools, Everything, Baidu, or Baidu Netdisk. The Chinese slogan describes the intended user experience only. The standard edition requires a separate Everything installation; the one-click demo includes the hash-verified official portable edition under its license.
 
 ## Demo
 
@@ -37,9 +37,21 @@ EverythingShare does not duplicate your files. It reads them through Everything 
 
 All demo data is fictional. The screenshots contain no real file names, accounts, domains, or server details.
 
-## Single-file Windows edition
+## One-click Windows demo — Everything is included
 
-To evaluate Basic Auth, search, sharing, and extraction codes without Docker:
+Download `EverythingShare-Demo-v*-windows-x64.exe` from [Releases](https://github.com/lmy138/EverythingShare/releases) and double-click it:
+
+- the entire distribution is one EXE; Everything, Docker, and a database installation are not required;
+- on first launch it extracts the official portable Everything build under `%LOCALAPPDATA%\EverythingShare Demo`, creates fictional sample files, and builds an isolated index;
+- the browser opens automatically for search, sharing, code-bearing links, and downloads;
+- it binds only to `127.0.0.1` and does not read or modify an existing Everything configuration or index;
+- closing the console stops the demo; later launches retain demo shares.
+
+The demo is for local evaluation and must not be exposed directly to the internet. It currently targets Windows x64.
+
+## Single-file Windows standard edition
+
+To connect EverythingShare to your own Everything data without Docker:
 
 1. Download the `windows-amd64` ZIP from [Releases](https://github.com/lmy138/EverythingShare/releases).
 2. Extract it and double-click `EverythingShare.exe`.

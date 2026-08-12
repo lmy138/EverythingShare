@@ -25,12 +25,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -65,6 +67,7 @@ type config struct {
 	BasicAuthUsername string
 	BasicAuthHash     []byte
 	OpenBrowser       bool
+	DemoMode          bool
 }
 
 type app struct {
@@ -142,6 +145,13 @@ type verifyRequest struct {
 }
 
 func main() {
+	demoCleanup, err := prepareBundledDemo()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if demoCleanup != nil {
+		defer demoCleanup()
+	}
 	if handled, err := handleStandaloneCommand(os.Args[1:]); handled {
 		if err != nil {
 			log.Fatal(err)
@@ -217,6 +227,15 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	shutdownSignals := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(shutdownSignals)
+	go func() {
+		<-shutdownSignals
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(ctx)
+	}()
 	log.Printf("everything share gateway listening on %s", cfg.ListenAddr)
 	if cfg.Standalone {
 		log.Printf("open %s in your browser", cfg.PublicBaseURL)
@@ -224,7 +243,9 @@ func main() {
 			go openBrowserAfterStart(cfg.PublicBaseURL)
 		}
 	}
-	log.Fatal(server.ListenAndServe())
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("server stopped: %v", err)
+	}
 }
 
 func backupDatabase(source, target string) error {
@@ -254,6 +275,9 @@ func backupDatabase(source, target string) error {
 }
 
 func loadConfig() (config, error) {
+	if bundledDemoRuntime != nil {
+		return loadBundledDemoConfig(*bundledDemoRuntime)
+	}
 	if !hasGatewayEnvironment() {
 		return loadStandaloneConfig(standaloneConfigPath(os.Args[1:]))
 	}
