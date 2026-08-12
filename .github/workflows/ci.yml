@@ -51,6 +51,29 @@ jobs:
           CGO_ENABLED: "0"
         run: go build -trimpath -o EverythingShare.exe .
 
+  windows-demo-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Fetch and verify official Everything payload
+        run: |
+          archive="Everything-1.4.1.1032.x64.zip"
+          curl --fail --location --retry 3 --retry-all-errors --proto '=https' --tlsv1.2 \
+            --output "/tmp/${archive}" "https://www.voidtools.com/${archive}"
+          echo "698df475ec44e638f66f1b6a32d28fea613cec78d3b6310e6abe53431eeb940c  /tmp/${archive}" | sha256sum --check --strict
+          unzip -p "/tmp/${archive}" everything.exe > third_party/everything/Everything.exe.bin
+          echo "f191f756996a14a11e5445fa7103d302efd510cf2fbf920e6c0c8ed51d512e36  third_party/everything/Everything.exe.bin" | sha256sum --check --strict
+      - name: Build one-file Windows demo
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags="-s -w -X main.edition=demo" -o EverythingShare-Demo.exe .
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

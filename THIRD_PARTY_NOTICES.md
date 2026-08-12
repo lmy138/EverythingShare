@@ -4,7 +4,7 @@ EverythingShare interoperates with or depends on the following projects:
 
 | Project | Use | License |
 |---|---|---|
-| Everything by voidtools | External Windows file index and HTTP server; not distributed here | MIT-style license |
+| Everything by voidtools | External dependency in standard deployments; official portable x64 executable embedded only in the one-click demo | MIT-style license |
 | OAuth2 Proxy | Optional OIDC authentication container | MIT |
 | Go | Build toolchain and runtime | BSD-style |
 | `golang.org/x/crypto` | Argon2id implementation | BSD-style |
@@ -13,7 +13,7 @@ EverythingShare interoperates with or depends on the following projects:
 | Nginx | Bundled Edge container | BSD-2-Clause |
 | Alpine Linux | Container base image | Multiple open-source licenses |
 
-Container images and Go modules remain subject to their respective license notices. EverythingShare does not redistribute the Everything executable.
+Container images and Go modules remain subject to their respective license notices. The demo release redistributes the unmodified official Everything 1.4.1.1032 x64 portable executable together with its license and source metadata. Release builds verify the upstream archive and executable with pinned SHA256 values before embedding them.
 
 Official references:
 

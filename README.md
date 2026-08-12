@@ -24,7 +24,8 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 - Logto、Authentik、Keycloak 等通用 OIDC 登录
 
 > [!IMPORTANT]
-> EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。项目不包含 Everything 安装包，使用者需要自行安装 Everything。
+> EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。常规版需要用户自行安装 Everything；一键 Demo 版按 Everything 许可证附带经哈希校验的官方便携版。
+
 ## 效果演示
 
 ![桌面端搜索、文件图标和三点操作菜单](docs/images/demo-search-desktop.png)
@@ -36,9 +37,21 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 
 所有 Demo 数据均为虚构内容，不包含真实文件名、账号、域名或服务器信息。
 
-## Windows 单文件版：下载即用
+## Windows 一键 Demo：未安装 Everything 也能用
 
-只想先体验 BasicAuth、搜索、分享和提取码时，可以直接下载 Windows 单文件包，不需要 Docker：
+只想立即体验时，从 [Releases](https://github.com/lmy138/EverythingShare/releases) 下载 `EverythingShare-Demo-v*-windows-x64.exe`，然后双击：
+
+- 整个发行包只有一个 EXE，无需安装 Everything、Docker 或数据库；
+- 首次运行会在 `%LOCALAPPDATA%\EverythingShare Demo` 解出官方 Everything 便携版，创建纯虚构示例文件并建立独立索引；
+- 浏览器自动打开，可直接搜索、创建分享、复制带提取码链接并下载；
+- 只监听 `127.0.0.1`，不会读取或修改已有 Everything 的配置和索引；
+- 关闭控制台后服务停止；再次双击仍可继续使用先前创建的 Demo 分享。
+
+Demo 版用于本机体验，不应直接暴露到公网。它当前提供 Windows x64 版本。
+
+## Windows 单文件正式版：连接已有 Everything
+
+需要连接自己的 Everything 数据时，可使用 Windows 单文件正式版，不需要 Docker：
 
 1. 从 [Releases](https://github.com/lmy138/EverythingShare/releases) 下载 `windows-amd64` ZIP。
 2. 解压后双击 `EverythingShare.exe`。
