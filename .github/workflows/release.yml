@@ -54,7 +54,7 @@ jobs:
             --output "/tmp/${archive}" \
             "https://www.voidtools.com/${archive}"
           echo "698df475ec44e638f66f1b6a32d28fea613cec78d3b6310e6abe53431eeb940c  /tmp/${archive}" | sha256sum --check --strict
-          unzip -p "/tmp/${archive}" Everything.exe > third_party/everything/Everything.exe.bin
+          unzip -p "/tmp/${archive}" everything.exe > third_party/everything/Everything.exe.bin
           echo "f191f756996a14a11e5445fa7103d302efd510cf2fbf920e6c0c8ed51d512e36  third_party/everything/Everything.exe.bin" | sha256sum --check --strict
       - name: Build one-file demo
         env:
