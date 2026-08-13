@@ -67,7 +67,6 @@ type config struct {
 	BasicAuthUsername string
 	BasicAuthHash     []byte
 	OpenBrowser       bool
-	DemoMode          bool
 }
 
 type app struct {
@@ -145,16 +144,9 @@ type verifyRequest struct {
 }
 
 func main() {
-	demoCleanup, err := prepareBundledDemo()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if demoCleanup != nil {
-		defer demoCleanup()
-	}
 	if handled, err := handleStandaloneCommand(os.Args[1:]); handled {
 		if err != nil {
-			log.Fatal(err)
+			exitStandaloneError(err)
 		}
 		return
 	}
@@ -183,7 +175,7 @@ func main() {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		log.Fatal(err)
+		exitStandaloneError(err)
 	}
 	if err := os.MkdirAll(path.Dir(strings.ReplaceAll(cfg.DatabasePath, "\\", "/")), 0700); err != nil {
 		log.Fatal(err)
@@ -275,9 +267,6 @@ func backupDatabase(source, target string) error {
 }
 
 func loadConfig() (config, error) {
-	if bundledDemoRuntime != nil {
-		return loadBundledDemoConfig(*bundledDemoRuntime)
-	}
 	if !hasGatewayEnvironment() {
 		return loadStandaloneConfig(standaloneConfigPath(os.Args[1:]))
 	}

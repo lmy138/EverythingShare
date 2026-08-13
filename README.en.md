@@ -24,7 +24,7 @@ EverythingShare does not duplicate your files. It reads them through Everything 
 - generic OIDC login for Logto, Authentik, Keycloak, and other providers
 
 > [!IMPORTANT]
-> EverythingShare is an unofficial community project and is not affiliated with or endorsed by voidtools, Everything, Baidu, or Baidu Netdisk. The Chinese slogan describes the intended user experience only. Everything itself is not bundled and must be installed separately.
+> EverythingShare is an unofficial community project and is not affiliated with or endorsed by voidtools, Everything, Baidu, or Baidu Netdisk. The standard edition does not bundle Everything; the OneClick edition embeds the hash-verified official portable build and its license.
 
 ## Demo
 
@@ -37,16 +37,24 @@ EverythingShare does not duplicate your files. It reads them through Everything 
 
 All demo data is fictional. The screenshots contain no real file names, accounts, domains, or server details.
 
-## Single-file Windows edition
+## Choose a Windows download
 
-To evaluate Basic Auth, search, sharing, and extraction codes without Docker:
+| Scenario | Download | Preinstalled Everything required |
+|---|---|---|
+| Everything is already installed; add EverythingShare only | `EverythingShare-v0.3.1-windows-amd64.zip` | Yes, Everything 1.4/1.5 |
+| Fresh PC; install Everything and EverythingShare together | `EverythingShare-OneClick-windows-x64.exe` | No; it embeds the official Everything 1.4.1.1032 x64 portable build |
 
-1. Download the `windows-amd64` ZIP from [Releases](https://github.com/lmy138/EverythingShare/releases).
-2. Extract it and double-click `EverythingShare.exe`.
-3. The first-run wizard asks for the Everything HTTP address and credentials.
-4. Create an EverythingShare Basic Auth account. The program starts and opens the browser when the wizard finishes.
+### Everything is already installed
 
-The program binds to `127.0.0.1:8088` by default and generates random session keys, an internal management key, the SQLite database, and the ZIP cache directory. The Basic Auth password is stored only as a BCrypt hash. The Everything HTTP password remains in the ACL-protected local `everythingshare.json`.
+Download and extract `EverythingShare-v0.3.1-windows-amd64.zip`, then run `EverythingShare.exe`. The existing wizard asks for the current Everything HTTP Server URL and credentials, followed by the EverythingShare Basic Auth account.
+
+### Everything is not installed: OneClick
+
+Run `EverythingShare-OneClick-windows-x64.exe`. The wizard configures the embedded Everything search engine and HTTP Server, lets you install an isolated service or run Everything elevated each time, and protects both components with the same credentials. Both username and password default to `admin` and can be changed.
+
+The Everything desktop window and EverythingShare web UI open automatically. The initial index usually takes 1–3 minutes; an empty search page during this period is normal.
+
+Both editions bind to `127.0.0.1:8088` by default and generate random session keys, an internal management key, the SQLite database, and the ZIP cache directory. The Basic Auth password is stored only as a BCrypt hash. The Everything HTTP password remains in the ACL-protected local `everythingshare.json`.
 
 See the [single-file Windows quick start](docs/windows-quickstart.en.md). The Docker deployment below remains the recommended option for public HTTPS, OIDC, and separate protected/public host names.
 

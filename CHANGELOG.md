@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-08-13
+
+- Added `EverythingShare-OneClick-windows-x64.exe` for Windows users without Everything installed.
+- Embedded and SHA256-verified the official Everything 1.4.1.1032 x64 portable executable and license notices.
+- Added shared-credential setup plus service or administrator launch modes.
+- Kept the existing Windows ZIP packages for users who already run Everything.
+
 ## 0.3.0 - 2026-07-24
 
 - Added a single-file Windows edition with no Docker runtime requirement.

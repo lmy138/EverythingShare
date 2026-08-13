@@ -1,6 +1,6 @@
 # EverythingShare single-file Windows quick start
 
-This package provides a Docker-free local Basic Auth experience. Everything itself is not bundled and must be installed separately.
+This page primarily documents the standard Windows ZIP edition, which requires Everything to be installed first. For a PC without Everything, download `EverythingShare-OneClick-windows-x64.exe` from the Release; it embeds the official portable build and configures search, HTTP Server, and shared login credentials through its wizard.
 
 ## Prepare Everything
 

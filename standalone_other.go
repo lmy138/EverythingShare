@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-func readConsoleSecret(prompt string) (string, error) {
+func readConsoleSecret(reader *bufio.Reader, prompt string) (string, error) {
 	fmt.Print(prompt)
-	value, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	value, err := reader.ReadString('\n')
 	return strings.TrimSpace(value), err
 }
 

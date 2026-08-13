@@ -1,6 +1,6 @@
 # EverythingShare Windows 单文件快速入门
 
-这是无需 Docker 的 BasicAuth 本地体验版本。程序不会捆绑 Everything，你仍需自行安装 Everything。
+本页主要说明需要预先安装 Everything 的标准 Windows ZIP 版。若电脑尚未安装 Everything，请从 Release 下载 `EverythingShare-OneClick-windows-x64.exe`；它已包含官方 Everything 便携版，并通过向导自动配置搜索、HTTP Server 和统一登录凭据。
 
 ## 准备 Everything
 
