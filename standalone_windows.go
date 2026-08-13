@@ -14,19 +14,19 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func readConsoleSecret(prompt string) (string, error) {
+func readConsoleSecret(reader *bufio.Reader, prompt string) (string, error) {
 	fmt.Print(prompt)
 	handle := windows.Handle(os.Stdin.Fd())
 	var originalMode uint32
 	if err := windows.GetConsoleMode(handle, &originalMode); err != nil {
-		value, readErr := bufio.NewReader(os.Stdin).ReadString('\n')
+		value, readErr := reader.ReadString('\n')
 		return strings.TrimSpace(value), readErr
 	}
 	if err := windows.SetConsoleMode(handle, originalMode&^windows.ENABLE_ECHO_INPUT); err != nil {
 		return "", err
 	}
 	defer windows.SetConsoleMode(handle, originalMode)
-	value, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	value, err := reader.ReadString('\n')
 	fmt.Println()
 	return strings.TrimSpace(value), err
 }

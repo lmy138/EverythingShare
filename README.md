@@ -24,7 +24,7 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 - Logto、Authentik、Keycloak 等通用 OIDC 登录
 
 > [!IMPORTANT]
-> EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。项目不包含 Everything 安装包，使用者需要自行安装 Everything。
+> EverythingShare 是非官方社区项目，与 voidtools、Everything 和百度网盘均无隶属或背书关系。“Everything版本地百度网盘”仅用于直观描述使用体验。标准版不包含 Everything；OneClick 版经哈希校验后内置官方 Everything 便携版及许可证。
 ## 效果演示
 
 ![桌面端搜索、文件图标和三点操作菜单](docs/images/demo-search-desktop.png)
@@ -35,16 +35,24 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 </p>
 
 
-## Windows 单文件版：下载即用
+## Windows 下载选择
 
-只想先体验 BasicAuth、搜索、分享和提取码时，可以直接下载 Windows 单文件包，不需要 Docker：
+| 使用场景 | 下载文件 | 是否需要预装 Everything |
+|---|---|---|
+| 已安装 Everything，只需要增加 EverythingShare | `EverythingShare-v0.3.1-windows-amd64.zip` | 需要，支持 Everything 1.4/1.5 |
+| 全新电脑，希望一步完成 Everything 与 EverythingShare | `EverythingShare-OneClick-windows-x64.exe` | 不需要，已内置官方 Everything 1.4.1.1032 x64 便携版 |
 
-1. 从 [Releases](https://github.com/lmy138/EverythingShare/releases) 下载 `windows-amd64` ZIP。
-2. 解压后双击 `EverythingShare.exe`。
-3. 首次启动会自动进入向导，填写 Everything HTTP 地址和账号密码。
-4. 创建 EverythingShare 的 BasicAuth 账号；向导完成后程序会启动并自动打开浏览器。
+### 已经安装 Everything
 
-程序默认只监听 `127.0.0.1:8088`，自动生成随机会话密钥、内部管理密钥、SQLite 数据库和 ZIP 缓存目录。BasicAuth 密码只保存 BCrypt 哈希，Everything HTTP 密码保存在受 ACL 保护的本地 `everythingshare.json` 中。
+下载并解压 `EverythingShare-v0.3.1-windows-amd64.zip`，双击 `EverythingShare.exe`。按照原有向导填写现有 Everything HTTP Server 的地址与凭据，再设置 EverythingShare BasicAuth 账号。
+
+### 尚未安装 Everything：OneClick
+
+直接下载并双击 `EverythingShare-OneClick-windows-x64.exe`。向导会配置内置 Everything 搜索和 HTTP Server，让你选择安装独立服务或每次以管理员权限运行，并使用同一组凭据保护 Everything 与 EverythingShare。用户名和密码默认均为 `admin`，也可自行修改。
+
+向导完成后会自动打开 Everything 主界面和 EverythingShare 网页。首次索引通常需要 1～3 分钟；网页暂时没有结果属于正常现象，索引完成后刷新即可。
+
+两种版本均默认只监听 `127.0.0.1:8088`，自动生成随机会话密钥、内部管理密钥、SQLite 数据库和 ZIP 缓存目录。BasicAuth 密码只保存 BCrypt 哈希，Everything HTTP 密码保存在受 ACL 保护的本地 `everythingshare.json` 中。
 
 完整说明见 [Windows 单文件快速入门](docs/windows-quickstart.zh-CN.md)。公网 HTTPS、OIDC 和双域名隔离仍推荐使用后面的 Docker 部署方案。
 

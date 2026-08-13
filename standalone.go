@@ -29,7 +29,17 @@ import (
 const standaloneConfigVersion = 1
 
 var version = "dev"
-var edition = "standard"
+
+func exitStandaloneError(err error) {
+	fmt.Fprintf(os.Stderr, "\n启动失败：%v\n", err)
+	if !hasGatewayEnvironment() {
+		if info, statErr := os.Stdin.Stat(); statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
+			fmt.Fprint(os.Stderr, "按回车键退出...")
+			_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		}
+	}
+	os.Exit(1)
+}
 
 //go:embed everything-ui/main.css everything-ui/share-ui.js
 var everythingUIFiles embed.FS
@@ -54,6 +64,7 @@ type standaloneFileConfig struct {
 	ZipCacheMaxBytes       int64  `json:"zip_cache_max_bytes"`
 	ZipCacheTTLHours       int64  `json:"zip_cache_ttl_hours"`
 	ZipCacheMinFreeBytes   int64  `json:"zip_cache_min_free_bytes"`
+	BundledEverythingMode  string `json:"bundled_everything_mode,omitempty"`
 }
 
 func handleStandaloneCommand(args []string) (bool, error) {
@@ -164,6 +175,9 @@ func loadStandaloneConfig(configPath string) (config, error) {
 	if err := validateStandaloneFileConfig(fileConfig); err != nil {
 		return config{}, err
 	}
+	if err := ensureBundledEverything(configPath, fileConfig); err != nil {
+		return config{}, err
+	}
 	session, err := decodeSecret(fileConfig.SessionSecret)
 	if err != nil || len(session) < 32 {
 		return config{}, errors.New("session_secret must contain at least 32 random bytes")
@@ -233,6 +247,9 @@ func validateStandaloneFileConfig(fileConfig standaloneFileConfig) error {
 	if fileConfig.DatabasePath == "" || fileConfig.CacheDir == "" {
 		return errors.New("database_path and cache_dir are required")
 	}
+	if fileConfig.BundledEverythingMode != "" && fileConfig.BundledEverythingMode != "service" && fileConfig.BundledEverythingMode != "admin" {
+		return errors.New("bundled_everything_mode must be service or admin")
+	}
 	return nil
 }
 
@@ -243,7 +260,11 @@ func runStandaloneWizard(configPath string, force bool) error {
 	fmt.Println()
 	fmt.Println("EverythingShare Windows 快速配置向导")
 	fmt.Println("这会创建本地 BasicAuth 体验环境，不需要 Docker。")
-	fmt.Println("请先在 Everything 中启用 HTTP Server、账号密码和文件下载。")
+	if bundledEverythingEnabled() {
+		fmt.Println("本安装包已内置 Everything，向导会配置搜索、HTTP Server 和 EverythingShare。")
+	} else {
+		fmt.Println("请先在 Everything 中启用 HTTP Server、账号密码和文件下载。")
+	}
 	fmt.Println()
 
 	reader := bufio.NewReader(os.Stdin)
@@ -258,12 +279,44 @@ func runStandaloneWizard(configPath string, force bool) error {
 	if err != nil {
 		return err
 	}
-	everythingPassword, err := readConsoleSecret("Everything HTTP 密码: ")
+	passwordPrompt := "Everything HTTP 密码: "
+	if bundledEverythingEnabled() {
+		passwordPrompt = "统一登录密码（直接回车使用 admin）: "
+	}
+	everythingPassword, err := readConsoleSecret(reader, passwordPrompt)
 	if err != nil {
 		return err
 	}
 	if everythingPassword == "" {
-		return errors.New("Everything HTTP 密码不能为空")
+		if bundledEverythingEnabled() {
+			everythingPassword = "admin"
+		} else {
+			return errors.New("Everything HTTP 密码不能为空")
+		}
+	}
+	bundledMode := ""
+	if bundledEverythingEnabled() {
+		if everythingPassword != "admin" {
+			confirmEverythingPassword, confirmErr := readConsoleSecret(reader, "再次输入统一登录密码: ")
+			if confirmErr != nil {
+				return confirmErr
+			}
+			if everythingPassword != confirmEverythingPassword {
+				return errors.New("两次输入的密码不一致")
+			}
+		}
+		mode, modeErr := promptValue(reader, "Everything 运行方式（1=安装服务并自动启动，2=每次以管理员权限启动）", "1")
+		if modeErr != nil {
+			return modeErr
+		}
+		switch mode {
+		case "1":
+			bundledMode = "service"
+		case "2":
+			bundledMode = "admin"
+		default:
+			return errors.New("Everything 运行方式只能选择 1 或 2")
+		}
 	}
 	listenAddr, err := promptValue(reader, "本地监听地址", "127.0.0.1:8088")
 	if err != nil {
@@ -280,26 +333,33 @@ func runStandaloneWizard(configPath string, force bool) error {
 	if err := validateBaseURL("分享链接基础地址", publicBaseURL); err != nil {
 		return err
 	}
-	basicUsername, err := promptValue(reader, "EverythingShare 登录用户名", "admin")
-	if err != nil {
-		return err
+	basicUsername := everythingUsername
+	if !bundledEverythingEnabled() {
+		basicUsername, err = promptValue(reader, "EverythingShare 登录用户名", "admin")
+		if err != nil {
+			return err
+		}
 	}
 	if !regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`).MatchString(basicUsername) {
 		return errors.New("登录用户名只能包含字母、数字、点、下划线和短横线")
 	}
-	basicPassword, err := readConsoleSecret("EverythingShare 登录密码（至少 10 位）: ")
-	if err != nil {
-		return err
-	}
-	if len([]rune(basicPassword)) < 10 {
-		return errors.New("EverythingShare 登录密码至少需要 10 位")
-	}
-	confirmPassword, err := readConsoleSecret("再次输入 EverythingShare 登录密码: ")
-	if err != nil {
-		return err
-	}
-	if basicPassword != confirmPassword {
-		return errors.New("两次输入的 EverythingShare 登录密码不一致")
+	basicPassword := everythingPassword
+	confirmPassword := everythingPassword
+	if !bundledEverythingEnabled() {
+		basicPassword, err = readConsoleSecret(reader, "EverythingShare 登录密码（至少 10 位）: ")
+		if err != nil {
+			return err
+		}
+		if len([]rune(basicPassword)) < 10 {
+			return errors.New("EverythingShare 登录密码至少需要 10 位")
+		}
+		confirmPassword, err = readConsoleSecret(reader, "再次输入 EverythingShare 登录密码: ")
+		if err != nil {
+			return err
+		}
+		if basicPassword != confirmPassword {
+			return errors.New("两次输入的 EverythingShare 登录密码不一致")
+		}
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(basicPassword), 12)
 	if err != nil {
@@ -328,8 +388,12 @@ func runStandaloneWizard(configPath string, force bool) error {
 		ZipCacheMaxBytes:       50 << 30,
 		ZipCacheTTLHours:       24,
 		ZipCacheMinFreeBytes:   20 << 30,
+		BundledEverythingMode:  bundledMode,
 	}
 	if err := writeStandaloneConfig(configPath, fileConfig); err != nil {
+		return err
+	}
+	if err := configureBundledEverything(configPath, fileConfig); err != nil {
 		return err
 	}
 	if err := probeEverything(fileConfig); err != nil {
@@ -352,6 +416,7 @@ func promptValue(reader *bufio.Reader, label, fallback string) (string, error) {
 		return "", err
 	}
 	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "\ufeff")
 	if value == "" {
 		value = fallback
 	}
@@ -441,20 +506,12 @@ func (a *app) standaloneRoutes() (http.Handler, error) {
 			gateway.ServeHTTP(w, request)
 			return
 		case isStandaloneAssetPath(request.URL.Path):
-			if !a.cfg.DemoMode && !a.requireBasicAuth(w, request) {
+			if !a.requireBasicAuth(w, request) {
 				return
 			}
 			serveEverythingUIAsset(w, request)
 			return
 		case isAdminGatewayPath(request.URL.Path):
-			if a.cfg.DemoMode {
-				adminRequest := request.Clone(request.Context())
-				adminRequest.Header = request.Header.Clone()
-				adminRequest.Header.Set("X-Share-Admin-Key", a.cfg.AdminKey)
-				adminRequest.Header.Set("X-Auth-Request-User", "demo-user")
-				gateway.ServeHTTP(w, adminRequest)
-				return
-			}
 			username, ok := a.basicAuthUser(w, request)
 			if !ok {
 				return
@@ -466,7 +523,7 @@ func (a *app) standaloneRoutes() (http.Handler, error) {
 			gateway.ServeHTTP(w, adminRequest)
 			return
 		default:
-			if !a.cfg.DemoMode && !a.requireBasicAuth(w, request) {
+			if !a.requireBasicAuth(w, request) {
 				return
 			}
 			proxy.ServeHTTP(w, request)
