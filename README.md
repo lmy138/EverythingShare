@@ -34,7 +34,6 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
   <img src="docs/images/demo-public-share.png" width="60%" alt="公开文件夹分享页面">
 </p>
 
-所有 Demo 数据均为虚构内容，不包含真实文件名、账号、域名或服务器信息。
 
 ## Windows 单文件版：下载即用
 
