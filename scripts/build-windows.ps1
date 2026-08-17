@@ -28,7 +28,7 @@ $containerCommand = @(
     '-e', 'GOOS=windows',
     '-e', "GOARCH=$Architecture",
     '-e', 'CGO_ENABLED=0',
-    'golang:1.26.5-alpine3.24',
+    'golang:1.26.6-alpine3.24',
     'go', 'build', '-trimpath',
     "-ldflags=-s -w -X main.version=$Version",
     '-o', "/src/dist/$packageName/EverythingShare.exe",

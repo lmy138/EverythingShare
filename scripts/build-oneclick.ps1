@@ -42,7 +42,7 @@ try {
         'run', '--rm',
         '-v', "${projectRoot}:/src",
         '-w', '/src',
-        'golang:1.26.5-alpine3.24',
+        'golang:1.26.6-alpine3.24',
         'sh', '-c',
         "gofmt -w bundled_everything_windows.go bundled_everything_stub.go standalone.go && go test ./... && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -tags bundled_everything -o /tmp/everythingshare-tests.exe . && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags bundled_everything -trimpath -ldflags='-s -w -X main.version=one-click-package' -o '/src/dist/EverythingShare-OneClick-windows-x64.exe' ."
     )
