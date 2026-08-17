@@ -62,7 +62,7 @@ try {
         '-e', 'GOOS=windows',
         '-e', 'GOARCH=amd64',
         '-e', 'CGO_ENABLED=0',
-        'golang:1.26.5-alpine3.24',
+        'golang:1.26.6-alpine3.24',
         'go', 'build', '-trimpath',
         "-ldflags=-s -w -X main.version=$Version -X main.edition=demo",
         '-o', "/src/dist/$outputName",

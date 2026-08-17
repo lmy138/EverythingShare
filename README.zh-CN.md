@@ -302,7 +302,7 @@ docker compose down
 ## 开发
 
 ```powershell
-docker run --rm -v "${PWD}:/src" -w /src golang:1.26.5-alpine3.24 sh -c "go test ./... && go vet ./..."
+docker run --rm -v "${PWD}:/src" -w /src golang:1.26.6-alpine3.24 sh -c "go test ./... && go vet ./..."
 docker build -t everythingshare:test .
 ```
 
