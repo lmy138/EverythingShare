@@ -13,13 +13,16 @@
 EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件，并提供：
 
 - 文件和文件夹分享
+- 文件与文件夹跨页多选和批量分享
+- 多来源组合分享及所选项目 ZIP 下载
 - 自动或自定义提取码
 - 带提取码的一键访问链接
+- 在本地生成分享链接二维码
 - 到期时间和下载次数限制
 - 单文件下载、断点续传和大文件下载
 - 文件夹浏览、流式 ZIP 和可控 ZIP 缓存
 - 分享管理、刷新目录快照、重置提取码和撤销
-- 桌面端与移动端紧凑界面
+- Windows 系统风格文件图标及桌面端、移动端紧凑界面
 - Basic Auth 快速部署
 - Logto、Authentik、Keycloak 等通用 OIDC 登录
 
@@ -39,12 +42,12 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 
 | 使用场景 | 下载文件 | 是否需要预装 Everything |
 |---|---|---|
-| 已安装 Everything，只需要增加 EverythingShare | `EverythingShare-v0.3.1-windows-amd64.zip` | 需要，支持 Everything 1.4/1.5 |
+| 已安装 Everything，只需要增加 EverythingShare | `EverythingShare-v0.4.0-windows-amd64.zip` | 需要，支持 Everything 1.4/1.5 |
 | 全新电脑，希望一步完成 Everything 与 EverythingShare | `EverythingShare-OneClick-windows-x64.exe` | 不需要，已内置官方 Everything 1.4.1.1032 x64 便携版 |
 
 ### 已经安装 Everything
 
-下载并解压 `EverythingShare-v0.3.1-windows-amd64.zip`，双击 `EverythingShare.exe`。按照原有向导填写现有 Everything HTTP Server 的地址与凭据，再设置 EverythingShare BasicAuth 账号。
+下载并解压 `EverythingShare-v0.4.0-windows-amd64.zip`，双击 `EverythingShare.exe`。按照原有向导填写现有 Everything HTTP Server 的地址与凭据，再设置 EverythingShare BasicAuth 账号。
 
 ### 尚未安装 Everything：OneClick
 
@@ -134,8 +137,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 
 1. 打开搜索页面并登录。
 2. 搜索一个文件或文件夹。
-3. 点击条目右侧的三点按钮。
-4. 选择“创建分享”。
+3. 使用行复选框选择一个或多个文件、文件夹；选择可跨结果页保留。
+4. 在批量操作栏中选择“分享”。
 5. 复制“完整分享信息”发给访问者。
 
 分享链接使用 URL fragment 携带提取码，例如：

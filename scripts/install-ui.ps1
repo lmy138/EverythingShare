@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $EverythingHttpRoot)) {
     New-Item -ItemType Directory -Path $EverythingHttpRoot -Force | Out-Null
 }
 
-$files = @('main.css', 'share-ui.js')
+$files = @('main.css', 'share-ui.js', 'qrcode.js')
 $existing = $files | Where-Object { Test-Path -LiteralPath (Join-Path $EverythingHttpRoot $_) }
 if ($existing.Count -gt 0) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'

@@ -101,6 +101,22 @@ server {
         proxy_buffering off;
     }
 
+    location /assets/ {
+        proxy_pass http://share_gateway;
+        proxy_set_header Host $http_host;
+        proxy_buffering off;
+    }
+
+    location ~ ^/(main\.css|share-ui\.js|qrcode\.js)$ {
+        auth_request /oauth2/auth;
+        error_page 401 = @oauth2_signin;
+        proxy_pass ${EVERYTHING_BASE_URL};
+        proxy_set_header Authorization "${EVERYTHING_AUTH_HEADER}";
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires -1;
+    }
+
     location / {
         auth_request /oauth2/auth;
         error_page 401 = @oauth2_signin;
@@ -124,7 +140,7 @@ server {
 
         sub_filter_once off;
         sub_filter '<meta name="viewport" content="width=512">' '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">';
-        sub_filter '</body>' '<script src="/share-ui.js" defer></script></body>';
+        sub_filter '</body>' '<script src="/assets/file-icons.js?v=0.4.0"></script><script src="/share-ui.js?v=0.4.0" defer></script></body>';
     }
 }
 
