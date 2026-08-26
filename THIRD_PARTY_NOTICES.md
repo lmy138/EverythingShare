@@ -12,6 +12,7 @@ EverythingShare interoperates with or depends on the following projects:
 | SQLite | Embedded database engine within the driver | Public Domain |
 | Nginx | Bundled Edge container | BSD-2-Clause |
 | Alpine Linux | Container base image | Multiple open-source licenses |
+| qrcode-generator | Local QR code generation in the administrator search UI | MIT |
 
 Container images and Go modules remain subject to their respective license notices. The OneClick release redistributes the unmodified official Everything 1.4.1.1032 x64 portable executable together with its license and source metadata. Release builds verify the upstream archive and executable with pinned SHA256 values before embedding them.
 
@@ -22,3 +23,4 @@ Official references:
 - <https://go.dev/LICENSE>
 - <https://gitlab.com/cznic/sqlite/-/blob/master/LICENSE>
 - <https://nginx.org/LICENSE>
+- <https://github.com/kazuhikoarase/qrcode-generator>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-08-26
+
+- Added cross-page multi-selection for files and folders, with batch sharing and ZIP downloads.
+- Added multi-source shares while preserving each selected folder tree and supporting legacy single-source records.
+- Added selectable downloads inside public folder shares, including nested-folder deduplication.
+- Added Windows system-style file icons, refreshed desktop/mobile row alignment, and application branding.
+- Added local QR-code generation for share links without sending link data to a third-party service.
+
 ## 0.3.1 - 2026-08-13
 
 - Added `EverythingShare-OneClick-windows-x64.exe` for Windows users without Everything installed.

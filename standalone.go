@@ -41,7 +41,7 @@ func exitStandaloneError(err error) {
 	os.Exit(1)
 }
 
-//go:embed everything-ui/main.css everything-ui/share-ui.js
+//go:embed everything-ui/main.css everything-ui/share-ui.js everything-ui/qrcode.js
 var everythingUIFiles embed.FS
 
 type standaloneFileConfig struct {
@@ -546,7 +546,7 @@ func isAdminGatewayPath(requestPath string) bool {
 }
 
 func isStandaloneAssetPath(requestPath string) bool {
-	return requestPath == "/main.css" || requestPath == "/share-ui.js"
+	return requestPath == "/main.css" || requestPath == "/share-ui.js" || requestPath == "/qrcode.js"
 }
 
 func (a *app) requireBasicAuth(w http.ResponseWriter, request *http.Request) bool {
@@ -590,7 +590,7 @@ func serveEverythingUIAsset(w http.ResponseWriter, request *http.Request) {
 	case ".js":
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	}
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(raw)
 }
 
@@ -608,7 +608,7 @@ func injectEverythingUI(response *http.Response) error {
 		[]byte(`<meta name="viewport" content="width=512">`),
 		[]byte(`<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`))
 	if !bytes.Contains(raw, []byte(`/share-ui.js`)) {
-		raw = bytes.Replace(raw, []byte(`</body>`), []byte(`<script src="/share-ui.js" defer></script></body>`), 1)
+		raw = bytes.Replace(raw, []byte(`</body>`), []byte(`<script src="/assets/file-icons.js?v=static-1"></script><script src="/share-ui.js?v=static-1" defer></script></body>`), 1)
 	}
 	response.Body = io.NopCloser(bytes.NewReader(raw))
 	response.ContentLength = int64(len(raw))

@@ -6,6 +6,10 @@
   const message = document.querySelector('#shareMessage');
   let info = null;
   let currentPath = '';
+  let currentEntries = [];
+  let navigation = [];
+  const selected = new Map();
+  const shareColumnKey = 'everything-share-column-widths-v1';
 
   async function copyText(text) {
     if (navigator.clipboard?.writeText && window.isSecureContext) {
@@ -29,9 +33,80 @@
     if (!copied) throw new Error('浏览器未允许复制，请长按地址栏复制链接');
   }
 
-  const iconMarkup = (type) => type === 'folder'
-    ? '<svg viewBox="0 0 24 24" focusable="false"><path class="icon-soft" d="M3.5 7.2A2.2 2.2 0 0 1 5.7 5h3.55l1.85 2.05h7.2a2.2 2.2 0 0 1 2.2 2.2v7.55a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V7.2Z"/><path class="icon-main" d="M3.5 10h17v6.8a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V10Z"/></svg>'
-    : '<svg viewBox="0 0 24 24" focusable="false"><path class="icon-paper" d="M6.4 3.5h6.9l4.8 4.8v11.3a.9.9 0 0 1-.9.9H6.4a.9.9 0 0 1-.9-.9V4.4a.9.9 0 0 1 .9-.9Z"/><path class="icon-fold" d="M12.8 3.8v5h5"/><path class="icon-line" d="M8.7 13h6.4M8.7 16.2h4.8"/></svg>';
+  function renderFileIcon(container, type, name) {
+    container.innerHTML = window.EverythingShareIcons.markup(type, name);
+  }
+
+  function installShareColumnSizing() {
+    const header = document.querySelector('#fileListHeader');
+    if (!header || header.dataset.resizable === 'true') return;
+    header.dataset.resizable = 'true';
+    const cells = [...header.querySelectorAll('[data-share-column]')];
+    const minimums = [180, 80, 80];
+    let ratios = [0.66, 0.17, 0.17];
+    try {
+      const stored = JSON.parse(localStorage.getItem(shareColumnKey) || 'null');
+      if (Array.isArray(stored) && stored.length === 3 && stored.every((value) => Number.isFinite(value) && value > 0)) {
+        const total = stored.reduce((sum, value) => sum + value, 0);
+        ratios = stored.map((value) => value / total);
+      }
+    } catch { /* Use defaults. */ }
+    const fitWidths = (available) => {
+      const widths = ratios.map((ratio) => ratio * available);
+      minimums.forEach((minimum, index) => { widths[index] = Math.max(minimum, widths[index]); });
+      let excess = widths.reduce((sum, value) => sum + value, 0) - available;
+      for (let pass = 0; pass < 3 && excess > 0.1; pass += 1) {
+        const room = widths.reduce((sum, value, index) => sum + Math.max(0, value - minimums[index]), 0);
+        if (room <= 0) break;
+        widths.forEach((value, index) => {
+          const reducible = Math.max(0, value - minimums[index]);
+          widths[index] -= Math.min(reducible, excess * reducible / room);
+        });
+        excess = widths.reduce((sum, value) => sum + value, 0) - available;
+      }
+      return widths;
+    };
+    const applyWidths = () => {
+      if (!matchMedia('(min-width: 768px)').matches) return { available: 0, widths: [] };
+      const listWidth = document.querySelector('#fileList').getBoundingClientRect().width || 960;
+      const available = Math.max(minimums.reduce((sum, value) => sum + value, 0), listWidth - 104);
+      const widths = fitWidths(available);
+      shareCard.style.setProperty('--share-name-width', `${Math.round(widths[0])}px`);
+      shareCard.style.setProperty('--share-meta-width', `${Math.round(widths[1])}px`);
+      shareCard.style.setProperty('--share-action-width', `${Math.round(widths[2])}px`);
+      return { available, widths };
+    };
+    const saveWidths = () => localStorage.setItem(shareColumnKey, JSON.stringify(ratios.map((value) => Number(value.toFixed(5)))));
+    const resizePair = (index, delta, starting) => {
+      if (!starting.available) return;
+      const lastColumn = index === cells.length - 1;
+      const partner = lastColumn ? index - 1 : index + 1;
+      const widths = [...starting.widths];
+      const directedDelta = lastColumn ? -delta : delta;
+      const bounded = Math.max(minimums[index] - widths[index], Math.min(widths[partner] - minimums[partner], directedDelta));
+      widths[index] += bounded; widths[partner] -= bounded;
+      ratios = widths.map((width) => width / starting.available);
+      applyWidths();
+    };
+    cells.forEach((cell, index) => {
+      const handle = document.createElement('span');
+      handle.className = 'share-column-resizer'; handle.tabIndex = 0; handle.setAttribute('role', 'separator'); handle.setAttribute('aria-orientation', 'vertical'); handle.setAttribute('aria-label', `调整${cell.textContent.trim()}栏宽`);
+      cell.append(handle);
+      handle.addEventListener('pointerdown', (event) => {
+        if (!matchMedia('(min-width: 768px)').matches) return;
+        event.preventDefault(); const startX = event.clientX; const starting = applyWidths(); handle.setPointerCapture(event.pointerId);
+        const move = (moveEvent) => resizePair(index, moveEvent.clientX - startX, starting);
+        const finish = () => { saveWidths(); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', finish); handle.removeEventListener('pointercancel', finish); };
+        handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
+      });
+      handle.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault(); resizePair(index, event.key === 'ArrowRight' ? 16 : -16, applyWidths()); saveWidths();
+      });
+    });
+    window.addEventListener('resize', applyWidths, { passive: true });
+    applyWidths();
+  }
 
   const api = async (url, options = {}) => {
     const response = await fetch(url, {
@@ -70,53 +145,123 @@
       : `已下载 ${info.downloads} / ${info.maxDownloads} 次`;
     if (info.type === 'folder') {
       document.querySelector('#folderToolbar').classList.remove('hidden');
+      document.querySelector('#fileListHeader').classList.remove('hidden');
+      installShareColumnSizing();
+      navigation = [];
       await loadFolder('');
     } else {
       document.querySelector('#singleFile').classList.remove('hidden');
-      document.querySelector('#singleIcon').innerHTML = iconMarkup('file');
+      renderFileIcon(document.querySelector('#singleIcon'), 'file', info.name);
       document.querySelector('#singleName').textContent = info.name;
     }
   }
 
-  async function loadFolder(folderPath) {
+  const isDescendantPath = (parent, candidate) => {
+    const base = String(parent || '').replace(/[\\/]+$/, '').toLowerCase();
+    const value = String(candidate || '').replace(/[\\/]+$/, '').toLowerCase();
+    return base !== value && value.startsWith(`${base}\\`);
+  };
+
+  const coveringFolder = (entry) => [...selected.values()].find((item) => item.type === 'folder' && isDescendantPath(item.path, entry.path));
+
+  function selectEntry(entry) {
+    if (selected.has(entry.id)) return true;
+    const parent = coveringFolder(entry);
+    if (parent) {
+      message.textContent = `“${entry.name}”已包含在所选文件夹“${parent.name}”中`;
+      return false;
+    }
+    if (entry.type === 'folder') {
+      [...selected.values()].forEach((item) => { if (isDescendantPath(entry.path, item.path)) selected.delete(item.id); });
+    }
+    if (selected.size >= 128) {
+      message.textContent = '一次最多选择 128 个项目';
+      return false;
+    }
+    selected.set(entry.id, entry);
+    message.textContent = '';
+    return true;
+  }
+
+  function updateSelectionUI() {
+    document.querySelector('#selectedCount').textContent = `已选 ${selected.size} 项`;
+    document.querySelector('#downloadSelected').disabled = selected.size === 0;
+    document.querySelector('#clearSelection').disabled = selected.size === 0;
+    document.querySelectorAll('.file-row[data-entry-id]').forEach((row) => {
+      const entry = currentEntries.find((item) => item.id === row.dataset.entryId);
+      if (!entry) return;
+      const exact = selected.has(entry.id);
+      const inherited = !exact && Boolean(coveringFolder(entry));
+      const checkbox = row.querySelector('.entry-select');
+      checkbox.checked = exact || inherited;
+      checkbox.disabled = inherited;
+      checkbox.title = inherited ? '已包含在所选上级文件夹中' : '';
+      row.classList.toggle('selected', exact || inherited);
+      row.classList.toggle('included', inherited);
+    });
+    const page = document.querySelector('#selectPage');
+    const selectedOnPage = currentEntries.filter((entry) => selected.has(entry.id) || coveringFolder(entry)).length;
+    page.checked = currentEntries.length > 0 && selectedOnPage === currentEntries.length;
+    page.indeterminate = selectedOnPage > 0 && selectedOnPage < currentEntries.length;
+    page.disabled = currentEntries.length === 0;
+  }
+
+  async function loadFolder(folderPath, remember = false) {
+    if (remember) navigation.push(currentPath);
     currentPath = folderPath || '';
     const data = await api(`/api/v1/public/shares/${token}/entries?path=${encodeURIComponent(currentPath)}`);
+    currentEntries = data.entries;
     const list = document.querySelector('#fileList');
     list.replaceChildren();
-    document.querySelector('#breadcrumb').textContent = currentPath || '根目录';
-    document.querySelector('#goUp').disabled = !currentPath;
+    document.querySelector('#breadcrumb').textContent = currentPath ? currentPath.split('\\').pop() : '分享项目';
+    document.querySelector('#goUp').disabled = navigation.length === 0;
     const zipButton = document.querySelector('#downloadZip');
     zipButton.disabled = !data.canZip;
-    zipButton.textContent = data.zipMode === 'stream' ? '打包下载（不可续传）' : data.zipMode === 'disabled' ? '项目过多，无法打包' : '打包下载';
+    zipButton.textContent = data.zipMode === 'stream' ? '下载全部（不可续传）' : data.zipMode === 'disabled' ? '项目过多，无法打包' : '下载全部';
     if (!data.entries.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.textContent = '这个文件夹是空的';
       list.append(empty);
+      updateSelectionUI();
       return;
     }
     data.entries.forEach((entry) => {
       const row = document.createElement('div');
       row.className = 'file-row';
+      row.dataset.entryId = entry.id;
+      const select = document.createElement('input');
+      select.type = 'checkbox';
+      select.className = 'entry-select';
+      select.setAttribute('aria-label', `选择 ${entry.name}`);
+      select.addEventListener('change', () => {
+        if (select.checked) selectEntry(entry); else selected.delete(entry.id);
+        updateSelectionUI();
+      });
       const main = document.createElement('div');
       main.className = 'file-main';
-      main.innerHTML = `<span class="file-icon ${entry.type}" aria-hidden="true">${iconMarkup(entry.type)}</span>`;
+      const icon = document.createElement('span');
+      icon.className = `file-icon ${entry.type}`;
+      icon.setAttribute('aria-hidden', 'true');
+      renderFileIcon(icon, entry.type, entry.name);
       const text = document.createElement('div');
       const name = document.createElement('div');
       name.className = 'file-name';
       name.textContent = entry.name;
+      name.title = entry.name;
       text.append(name);
-      main.append(text);
+      main.append(icon, text);
       const meta = document.createElement('div');
       meta.className = 'file-meta';
       meta.textContent = entry.type === 'folder' ? '文件夹' : formatBytes(entry.size);
       const button = document.createElement('button');
       button.className = entry.type === 'folder' ? 'secondary row-action' : 'primary row-action';
       button.textContent = entry.type === 'folder' ? '打开' : '下载';
-      button.addEventListener('click', () => entry.type === 'folder' ? loadFolder(entry.path) : startDownload({ entryId: entry.id }));
-      row.append(main, meta, button);
+      button.addEventListener('click', () => entry.type === 'folder' ? loadFolder(entry.path, true) : startDownload({ entryId: entry.id }));
+      row.append(select, main, meta, button);
       list.append(row);
     });
+    updateSelectionUI();
   }
 
   async function startDownload(payload) {
@@ -145,7 +290,24 @@
   });
   document.querySelector('#downloadSingle').addEventListener('click', () => startDownload({}));
   document.querySelector('#downloadZip').addEventListener('click', () => startDownload({ zip: true }));
-  document.querySelector('#goUp').addEventListener('click', () => loadFolder(currentPath.includes('\\') ? currentPath.slice(0, currentPath.lastIndexOf('\\')) : ''));
+  document.querySelector('#downloadSelected').addEventListener('click', () => startDownload({ zip: true, entryIds: [...selected.keys()] }));
+  document.querySelector('#clearSelection').addEventListener('click', () => {
+    selected.clear();
+    message.textContent = '';
+    updateSelectionUI();
+  });
+  document.querySelector('#selectPage').addEventListener('change', (event) => {
+    if (event.currentTarget.checked) {
+      currentEntries.forEach((entry) => selectEntry(entry));
+    } else {
+      currentEntries.forEach((entry) => selected.delete(entry.id));
+    }
+    updateSelectionUI();
+  });
+  document.querySelector('#goUp').addEventListener('click', () => {
+    const parent = navigation.pop();
+    if (parent != null) loadFolder(parent).catch((error) => { message.textContent = error.message; });
+  });
   document.querySelector('#systemShare').addEventListener('click', async () => {
     const shareData = { title: info?.title || '文件分享', text: '文件分享', url: location.href };
     if (navigator.share) {

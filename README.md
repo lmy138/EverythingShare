@@ -13,13 +13,16 @@
 EverythingShare does not duplicate your files. It reads them through Everything HTTP Server and adds:
 
 - file and folder sharing
+- cross-page multi-selection and batch sharing for files and folders
+- multi-source shares and selected-item ZIP downloads
 - automatic or custom extraction codes
 - one-click links containing the extraction code
+- locally generated share-link QR codes
 - expiration dates and download limits
 - single-file, large-file, and Range downloads
 - folder browsing, streaming ZIP, and controlled ZIP caching
 - share management, manifest refresh, code reset, and revocation
-- compact desktop and mobile layouts
+- Windows system-style file icons and compact desktop/mobile layouts
 - a Basic Auth quick start
 - generic OIDC login for Logto, Authentik, Keycloak, and other providers
 
@@ -41,12 +44,12 @@ All demo data is fictional. The screenshots contain no real file names, accounts
 
 | Scenario | Download | Preinstalled Everything required |
 |---|---|---|
-| Everything is already installed; add EverythingShare only | `EverythingShare-v0.3.1-windows-amd64.zip` | Yes, Everything 1.4/1.5 |
+| Everything is already installed; add EverythingShare only | `EverythingShare-v0.4.0-windows-amd64.zip` | Yes, Everything 1.4/1.5 |
 | Fresh PC; install Everything and EverythingShare together | `EverythingShare-OneClick-windows-x64.exe` | No; it embeds the official Everything 1.4.1.1032 x64 portable build |
 
 ### Everything is already installed
 
-Download and extract `EverythingShare-v0.3.1-windows-amd64.zip`, then run `EverythingShare.exe`. The existing wizard asks for the current Everything HTTP Server URL and credentials, followed by the EverythingShare Basic Auth account.
+Download and extract `EverythingShare-v0.4.0-windows-amd64.zip`, then run `EverythingShare.exe`. The existing wizard asks for the current Everything HTTP Server URL and credentials, followed by the EverythingShare Basic Auth account.
 
 ### Everything is not installed: OneClick
 
@@ -136,8 +139,8 @@ If your browser does not resolve `.localhost` subdomains automatically, add this
 
 1. Open the search page and sign in.
 2. Search for a file or folder.
-3. Select the three-dot button on the right.
-4. Choose **Create share**.
+3. Select one or more files and folders with the row checkboxes. Selections can span result pages.
+4. Choose **Share** from the batch action bar.
 5. Copy the complete sharing information and send it to the recipient.
 
 The extraction code is carried in the URL fragment:

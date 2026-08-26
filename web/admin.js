@@ -47,9 +47,9 @@
   const time = (v) => v
     ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v * 1000))
     : '永久';
-  const iconMarkup = (type) => type === 'folder'
-    ? '<svg viewBox="0 0 24 24" focusable="false"><path class="icon-soft" d="M3.5 7.2A2.2 2.2 0 0 1 5.7 5h3.55l1.85 2.05h7.2a2.2 2.2 0 0 1 2.2 2.2v7.55a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V7.2Z"/><path class="icon-main" d="M3.5 10h17v6.8a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V10Z"/></svg>'
-    : '<svg viewBox="0 0 24 24" focusable="false"><path class="icon-paper" d="M6.4 3.5h6.9l4.8 4.8v11.3a.9.9 0 0 1-.9.9H6.4a.9.9 0 0 1-.9-.9V4.4a.9.9 0 0 1 .9-.9Z"/><path class="icon-fold" d="M12.8 3.8v5h5"/><path class="icon-line" d="M8.7 13h6.4M8.7 16.2h4.8"/></svg>';
+  function renderFileIcon(container, type, name) {
+    container.innerHTML = window.EverythingShareIcons.markup(type, name);
+  }
 
   function closeMenus(except) {
     document.querySelectorAll('details.operation-menu[open]').forEach((menu) => {
@@ -125,7 +125,7 @@
     const icon = document.createElement('span');
     icon.className = `file-icon ${share.type}`;
     icon.setAttribute('aria-hidden', 'true');
-    icon.innerHTML = iconMarkup(share.type);
+    renderFileIcon(icon, share.type, share.name);
 
     const info = document.createElement('div');
     info.className = 'admin-info';

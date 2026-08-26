@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <title>文件分享</title>
-  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" type="image/svg+xml" href="/assets/app-icon.svg">
+  <link rel="stylesheet" href="/assets/app.css?v=baidu-2">
 </head>
 <body data-token="{{TOKEN}}">
   <main class="shell">
     <section id="verifyCard" class="card verify">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 3.5h6.5l4.6 4.6v5.2"/><path d="M13.2 3.8v4.8H18"/><path d="M10.1 18.2 8.4 20a2.8 2.8 0 0 1-4-4l2.2-2.2a2.8 2.8 0 0 1 4-.1"/><path d="m13.9 12.8 1.7-1.7a2.8 2.8 0 1 1 4 4l-2.2 2.2a2.8 2.8 0 0 1-4 .1"/><path d="m9.5 15.5 5-5"/></svg></div>
+        <a class="brand-mark brand-home" href="/" aria-label="返回首页"><img src="/assets/app-icon.svg" alt=""></a>
         <div><h1>访问文件分享</h1><p class="muted">请输入分享者提供的提取码</p></div>
       </div>
       <form id="verifyForm">
@@ -27,7 +28,7 @@
     <section id="shareCard" class="card hidden">
       <header class="share-head">
         <div>
-          <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.2 3.5h6.5l4.6 4.6v5.2"/><path d="M13.2 3.8v4.8H18"/><path d="M10.1 18.2 8.4 20a2.8 2.8 0 0 1-4-4l2.2-2.2a2.8 2.8 0 0 1 4-.1"/><path d="m13.9 12.8 1.7-1.7a2.8 2.8 0 1 1 4 4l-2.2 2.2a2.8 2.8 0 0 1-4 .1"/><path d="m9.5 15.5 5-5"/></svg></div><h1 id="shareTitle">文件分享</h1></div>
+          <div class="brand"><a class="brand-mark brand-home" href="/" aria-label="返回首页"><img src="/assets/app-icon.svg" alt=""></a><h1 id="shareTitle">文件分享</h1></div>
           <div class="stats"><span id="shareExpiry" class="stat"></span><span id="shareDownloads" class="stat"></span></div>
         </div>
         <button id="systemShare" class="secondary" type="button">分享链接</button>
@@ -35,16 +36,27 @@
       <div id="folderToolbar" class="toolbar hidden">
         <button id="goUp" class="secondary" type="button">返回上级</button>
         <div id="breadcrumb" class="breadcrumb">根目录</div>
-        <button id="downloadZip" class="primary" type="button">打包下载</button>
+        <label class="select-page"><input id="selectPage" type="checkbox"> 全选当前目录</label>
+        <span id="selectedCount" class="selection-count">已选 0 项</span>
+        <button id="clearSelection" class="secondary" type="button" disabled>清除选择</button>
+        <button id="downloadSelected" class="primary" type="button" disabled>下载所选</button>
+        <button id="downloadZip" class="secondary" type="button">下载全部</button>
       </div>
       <div id="singleFile" class="toolbar hidden">
         <div class="breadcrumb"><span id="singleIcon" class="file-icon file" aria-hidden="true"></span><span id="singleName"></span></div>
         <button id="downloadSingle" class="primary" type="button">下载文件</button>
       </div>
+      <div id="fileListHeader" class="file-list-header hidden" aria-label="文件列表表头">
+        <span aria-hidden="true"></span>
+        <div class="share-column-header" data-share-column="name">名称</div>
+        <div class="share-column-header" data-share-column="meta">大小</div>
+        <div class="share-column-header" data-share-column="action">操作</div>
+      </div>
       <div id="fileList" class="file-list"></div>
       <p id="shareMessage" class="message" role="alert"></p>
     </section>
   </main>
-  <script src="/assets/share.js"></script>
+  <script src="/assets/file-icons.js?v=static-1"></script>
+  <script src="/assets/share.js?v=static-1"></script>
 </body>
 </html>

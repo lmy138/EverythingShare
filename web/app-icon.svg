@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="文件搜索与分享">
+  <defs>
+    <linearGradient id="background" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30BEFF"/>
+      <stop offset="1" stop-color="#0878EE"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="url(#background)"/>
+  <circle cx="27" cy="27" r="13" fill="none" stroke="#fff" stroke-width="5"/>
+  <path d="m36.5 36.5 10 10" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="m38 24 8-5m-8 8 8 5" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="49" cy="17" r="4" fill="#fff"/>
+  <circle cx="49" cy="34" r="4" fill="#fff"/>
+</svg>

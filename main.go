@@ -43,6 +43,8 @@ const (
 	maxManifestEntries = 250000
 	maxZipEntries      = 100000
 	smallZipEntries    = 10000
+	maxSelectedSources = 128
+	downloadPackageTTL = 15 * time.Minute
 )
 
 //go:embed web/*
@@ -108,6 +110,7 @@ type shareRecord struct {
 	UpdatedAt    int64
 	EntryCount   int64
 	TotalSize    int64
+	SourcesJSON  string
 }
 
 type entryRecord struct {
@@ -119,21 +122,46 @@ type entryRecord struct {
 	Kind         string
 	Size         int64
 	Modified     string
+	SourcePath   string
+}
+
+type shareSource struct {
+	SourcePath string `json:"sourcePath"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
 }
 
 type createShareRequest struct {
-	SourcePath   string `json:"sourcePath"`
-	Type         string `json:"type"`
-	Title        string `json:"title"`
-	ExpiresAt    string `json:"expiresAt"`
-	MaxDownloads *int64 `json:"maxDownloads"`
-	Code         string `json:"code"`
+	SourcePath   string        `json:"sourcePath"`
+	Type         string        `json:"type"`
+	Title        string        `json:"title"`
+	ExpiresAt    string        `json:"expiresAt"`
+	MaxDownloads *int64        `json:"maxDownloads"`
+	Code         string        `json:"code"`
+	Sources      []shareSource `json:"sources"`
 }
 
 type downloadRequest struct {
-	EntryID string `json:"entryId"`
-	Zip     bool   `json:"zip"`
+	EntryID  string   `json:"entryId"`
+	EntryIDs []string `json:"entryIds"`
+	Zip      bool     `json:"zip"`
 }
+
+type createDownloadPackageRequest struct {
+	Sources []shareSource `json:"sources"`
+}
+
+type validatedSource struct {
+	Source shareSource
+	Item   everythingItem
+}
+
+type requestFailure struct {
+	Status  int
+	Message string
+}
+
+func (e *requestFailure) Error() string { return e.Message }
 
 type resetCodeRequest struct {
 	Code string `json:"code"`
@@ -401,11 +429,34 @@ CREATE TABLE IF NOT EXISTS tickets (
   id TEXT PRIMARY KEY,
   share_id TEXT NOT NULL REFERENCES shares(id) ON DELETE CASCADE,
   entry_id TEXT,
+  selection_json TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tickets_expiry_idx ON tickets(expires_at);
+CREATE TABLE IF NOT EXISTS download_packages (
+  id TEXT PRIMARY KEY,
+  created_by TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  zip_mode TEXT NOT NULL CHECK(zip_mode IN ('cached','stream')),
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  entry_count INTEGER NOT NULL DEFAULT 0,
+  total_size INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS download_packages_expiry_idx ON download_packages(expires_at);
+CREATE TABLE IF NOT EXISTS download_package_entries (
+  package_id TEXT NOT NULL REFERENCES download_packages(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  archive_path TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('file','folder')),
+  size INTEGER NOT NULL DEFAULT 0,
+  modified TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(package_id, archive_path)
+);
+CREATE INDEX IF NOT EXISTS download_package_entries_order_idx ON download_package_entries(package_id, ordinal);
 CREATE TABLE IF NOT EXISTS failed_attempts (
   share_id TEXT NOT NULL,
   ip_hash TEXT NOT NULL,
@@ -429,6 +480,18 @@ CREATE TABLE IF NOT EXISTS audit_events (
 	// management UI can reproduce a one-click URL without storing codes in
 	// plaintext. SQLite lacks ADD COLUMN IF NOT EXISTS on older versions.
 	if _, err := a.db.Exec(`ALTER TABLE shares ADD COLUMN code_cipher TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return err
+	}
+	if _, err := a.db.Exec(`ALTER TABLE shares ADD COLUMN sources_json TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return err
+	}
+	if _, err := a.db.Exec(`ALTER TABLE entries ADD COLUMN source_path TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return err
+	}
+	if _, err := a.db.Exec(`ALTER TABLE tickets ADD COLUMN selection_json TEXT NOT NULL DEFAULT ''`); err != nil &&
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 		return err
 	}
@@ -461,6 +524,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /share-api/v1/shares/{id}/revoke", a.withAdmin(a.revokeShare))
 	mux.HandleFunc("POST /share-api/v1/shares/{id}/refresh", a.withAdmin(a.refreshShare))
 	mux.HandleFunc("POST /share-api/v1/shares/{id}/reset-code", a.withAdmin(a.resetCode))
+	mux.HandleFunc("POST /share-api/v1/download-packages", a.withAdmin(a.createDownloadPackage))
+	mux.HandleFunc("GET /share-api/v1/download-packages/{ticket}", a.withAdmin(a.downloadPackage))
 	return a.securityHeaders(a.requestLog(mux))
 }
 
@@ -571,30 +636,232 @@ func (a *app) adminSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true})
 }
 
+func (a *app) validateSources(ctx context.Context, requested []shareSource) ([]validatedSource, error) {
+	if len(requested) == 0 {
+		return nil, &requestFailure{Status: http.StatusBadRequest, Message: "至少选择一个项目"}
+	}
+	if len(requested) > maxSelectedSources {
+		return nil, &requestFailure{Status: http.StatusRequestEntityTooLarge, Message: "一次最多选择128个项目"}
+	}
+	validated := make([]validatedSource, 0, len(requested))
+	seen := make(map[string]bool, len(requested))
+	for _, candidate := range requested {
+		source, err := cleanWindowsPath(candidate.SourcePath)
+		key := strings.ToLower(source)
+		if err != nil || seen[key] {
+			return nil, &requestFailure{Status: http.StatusBadRequest, Message: "文件路径无效或存在重复项目"}
+		}
+		seen[key] = true
+		item, err := a.findExact(ctx, source)
+		if err != nil {
+			return nil, &requestFailure{Status: http.StatusNotFound, Message: "Everything 中未找到该文件或文件夹"}
+		}
+		kind := normalizeType(item.Type)
+		if kind == "" || (candidate.Type != "" && candidate.Type != kind) {
+			return nil, &requestFailure{Status: http.StatusConflict, Message: "文件类型已变化，请刷新页面"}
+		}
+		validated = append(validated, validatedSource{
+			Source: shareSource{SourcePath: source, Type: kind, Name: item.Name},
+			Item:   item,
+		})
+	}
+	return collapseCoveredSources(validated), nil
+}
+
+func collapseCoveredSources(sources []validatedSource) []validatedSource {
+	out := make([]validatedSource, 0, len(sources))
+	for i, candidate := range sources {
+		covered := false
+		for j, parent := range sources {
+			if i != j && parent.Source.Type == "folder" && isWindowsDescendant(parent.Source.SourcePath, candidate.Source.SourcePath) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func isWindowsDescendant(parent, candidate string) bool {
+	parent = strings.TrimRight(strings.ToLower(parent), "\\")
+	candidate = strings.TrimRight(strings.ToLower(candidate), "\\")
+	return parent != candidate && strings.HasPrefix(candidate, parent+"\\")
+}
+
+func (a *app) snapshotValidatedSources(ctx context.Context, sources []validatedSource, includeSelectedRoot bool) ([]entryRecord, error) {
+	if len(sources) == 1 && !includeSelectedRoot {
+		if sources[0].Source.Type == "folder" {
+			return a.snapshotFolder(ctx, sources[0].Source.SourcePath)
+		}
+		return nil, nil
+	}
+	bases, err := selectionArchiveBases(sources)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]entryRecord, 0)
+	seen := make(map[string]bool)
+	appendEntry := func(entry entryRecord) error {
+		archivePath, err := safeArchivePath(entry.RelativePath)
+		if err != nil {
+			return err
+		}
+		key := strings.ToLower(archivePath)
+		if seen[key] {
+			return fmt.Errorf("duplicate archive path: %s", archivePath)
+		}
+		seen[key] = true
+		entry.RelativePath = archivePath
+		entry.ParentPath = relativeParent(archivePath)
+		if entry.ID == "" {
+			entry.ID = randomID(16)
+		}
+		out = append(out, entry)
+		if len(out) > maxManifestEntries {
+			return errors.New("manifest entry limit exceeded")
+		}
+		return nil
+	}
+	for i, source := range sources {
+		base := bases[i]
+		if source.Source.Type == "file" {
+			if err := appendEntry(entryRecord{Name: pathBase(base), Kind: "file", RelativePath: base, Size: itemSize(source.Item), Modified: itemModified(source.Item), SourcePath: source.Source.SourcePath}); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err := appendEntry(entryRecord{Name: pathBase(base), Kind: "folder", RelativePath: base, SourcePath: source.Source.SourcePath}); err != nil {
+			return nil, err
+		}
+		children, err := a.snapshotFolder(ctx, source.Source.SourcePath)
+		if err != nil {
+			return nil, err
+		}
+		for _, child := range children {
+			child.RelativePath = base + "\\" + child.RelativePath
+			if err := appendEntry(child); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out, nil
+}
+
+func selectionArchiveBases(sources []validatedSource) ([]string, error) {
+	if len(sources) == 0 {
+		return nil, errors.New("no sources")
+	}
+	names := make([]string, len(sources))
+	for i, source := range sources {
+		names[i] = source.Source.Name
+	}
+	return uniqueArchiveNames(names)
+}
+
+// uniqueArchiveNames keeps every selected source as an independent top-level
+// item. Sources from different directories may have the same name, so add a
+// deterministic suffix instead of hiding one source behind a synthetic parent.
+func uniqueArchiveNames(names []string) ([]string, error) {
+	result := make([]string, len(names))
+	used := make(map[string]bool, len(names))
+	for i, original := range names {
+		name, err := safeArchivePath(original)
+		if err != nil {
+			return nil, err
+		}
+		candidate := name
+		for suffix := 2; used[strings.ToLower(candidate)]; suffix++ {
+			candidate = archiveNameWithSuffix(name, suffix)
+		}
+		used[strings.ToLower(candidate)] = true
+		result[i] = candidate
+	}
+	return result, nil
+}
+
+func archiveNameWithSuffix(name string, suffix int) string {
+	ext := path.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if stem == "" {
+		stem, ext = name, ""
+	}
+	return fmt.Sprintf("%s (%d)%s", stem, suffix, ext)
+}
+
+func splitWindowsPath(source string) (string, []string, error) {
+	cleaned, err := cleanWindowsPath(source)
+	if err != nil {
+		return "", nil, err
+	}
+	if strings.HasPrefix(cleaned, `\\`) {
+		parts := strings.Split(strings.TrimPrefix(cleaned, `\\`), "\\")
+		if len(parts) < 2 {
+			return "", nil, errors.New("UNC share is incomplete")
+		}
+		return `\\` + parts[0] + `\` + parts[1], parts[2:], nil
+	}
+	parts := strings.Split(cleaned, "\\")
+	return strings.ToUpper(parts[0]), parts[1:], nil
+}
+
+func windowsVolumeLabel(volume string) string {
+	if strings.HasPrefix(volume, `\\`) {
+		parts := strings.Split(strings.TrimPrefix(volume, `\\`), "\\")
+		return strings.Join(append([]string{"网络共享"}, parts...), "\\")
+	}
+	return strings.TrimSuffix(strings.ToUpper(volume), ":") + "盘"
+}
+
+func safeArchivePath(value string) (string, error) {
+	value = strings.Trim(strings.ReplaceAll(value, "/", "\\"), "\\")
+	if value == "" || strings.ContainsRune(value, '\x00') {
+		return "", errors.New("archive path is empty or unsafe")
+	}
+	parts := strings.Split(value, "\\")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." || strings.Contains(part, ":") {
+			return "", errors.New("archive path is unsafe")
+		}
+	}
+	return strings.Join(parts, "\\"), nil
+}
+
+func pathBase(value string) string {
+	value = strings.TrimRight(strings.ReplaceAll(value, "/", "\\"), "\\")
+	if i := strings.LastIndex(value, "\\"); i >= 0 {
+		return value[i+1:]
+	}
+	return value
+}
+
 func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 	var in createShareRequest
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "请求格式不正确")
 		return
 	}
-	source, err := cleanWindowsPath(in.SourcePath)
+	sources := in.Sources
+	if len(sources) == 0 {
+		sources = []shareSource{{SourcePath: in.SourcePath, Type: in.Type}}
+	}
+	validated, err := a.validateSources(r.Context(), sources)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "文件路径无效")
+		var failure *requestFailure
+		if errors.As(err, &failure) {
+			writeError(w, failure.Status, failure.Message)
+		} else {
+			writeError(w, http.StatusBadGateway, "无法读取文件或文件夹")
+		}
 		return
 	}
-	item, err := a.findExact(r.Context(), source)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "Everything 中未找到该文件或文件夹")
-		return
-	}
-	kind := normalizeType(item.Type)
-	if kind == "" {
-		writeError(w, http.StatusBadRequest, "不支持该对象类型")
-		return
-	}
-	if in.Type != "" && in.Type != kind {
-		writeError(w, http.StatusConflict, "文件类型已变化，请刷新页面")
-		return
+	source := validated[0].Source.SourcePath
+	item := validated[0].Item
+	kind := validated[0].Source.Type
+	if len(validated) > 1 {
+		kind = "folder"
 	}
 	code := strings.ToUpper(strings.TrimSpace(in.Code))
 	if code == "" {
@@ -627,13 +894,21 @@ func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 	token := randomID(24)
 	now := time.Now().Unix()
 	name := item.Name
+	if len(validated) > 1 {
+		name = fmt.Sprintf("已选%d项", len(validated))
+	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = name
 	}
 	if len([]rune(title)) > 120 {
-		writeError(w, http.StatusBadRequest, "标题过长")
-		return
+		if strings.TrimSpace(in.Title) == "" {
+			runes := []rune(title)
+			title = string(runes[:119]) + "…"
+		} else {
+			writeError(w, http.StatusBadRequest, "标题过长")
+			return
+		}
 	}
 	size := itemSize(item)
 	modified := itemModified(item)
@@ -652,10 +927,15 @@ func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 	if in.MaxDownloads != nil {
 		maxValue = *in.MaxDownloads
 	}
+	storedSources := make([]shareSource, len(validated))
+	for i, validatedSource := range validated {
+		storedSources[i] = validatedSource.Source
+	}
+	sourcesJSON, _ := json.Marshal(storedSources)
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO shares
-		(id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,code_cipher,expires_at,max_downloads,status,created_by,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, token, title, source, kind, name, size, modified, codeHash, codeCipher, expiresValue, maxValue, "active",
+		(id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,code_cipher,sources_json,expires_at,max_downloads,status,created_by,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, token, title, source, kind, name, size, modified, codeHash, codeCipher, string(sourcesJSON), expiresValue, maxValue, "active",
 		r.Header.Get("X-Auth-Request-User"), now, now)
 	if err != nil {
 		writeError(w, 500, "无法创建分享")
@@ -663,7 +943,7 @@ func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 	}
 	var entryCount, totalSize int64
 	if kind == "folder" {
-		entries, err := a.snapshotFolder(r.Context(), source)
+		entries, err := a.snapshotValidatedSources(r.Context(), validated, len(validated) > 1)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "无法读取文件夹内容")
 			return
@@ -672,13 +952,13 @@ func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusRequestEntityTooLarge, "文件夹项目过多，超过当前安全上限")
 			return
 		}
-		stmt, err := tx.PrepareContext(r.Context(), `INSERT INTO entries(id,share_id,relative_path,parent_path,name,kind,size,modified) VALUES(?,?,?,?,?,?,?,?)`)
+		stmt, err := tx.PrepareContext(r.Context(), `INSERT INTO entries(id,share_id,relative_path,parent_path,name,kind,size,modified,source_path) VALUES(?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			writeError(w, 500, "无法保存文件夹清单")
 			return
 		}
 		for _, e := range entries {
-			if _, err = stmt.ExecContext(r.Context(), e.ID, id, e.RelativePath, e.ParentPath, e.Name, e.Kind, e.Size, e.Modified); err != nil {
+			if _, err = stmt.ExecContext(r.Context(), e.ID, id, e.RelativePath, e.ParentPath, e.Name, e.Kind, e.Size, e.Modified, e.SourcePath); err != nil {
 				_ = stmt.Close()
 				writeError(w, 500, "无法保存文件夹清单")
 				return
@@ -705,6 +985,166 @@ func (a *app) createShare(w http.ResponseWriter, r *http.Request) {
 		"expiresAt": unixOrNil(expires), "maxDownloads": in.MaxDownloads,
 		"entryCount": entryCount, "totalSize": totalSize,
 	})
+}
+
+func (a *app) createDownloadPackage(w http.ResponseWriter, r *http.Request) {
+	var in createDownloadPackageRequest
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "请求格式不正确")
+		return
+	}
+	validated, err := a.validateSources(r.Context(), in.Sources)
+	if err != nil {
+		var failure *requestFailure
+		if errors.As(err, &failure) {
+			writeError(w, failure.Status, failure.Message)
+		} else {
+			writeError(w, http.StatusBadGateway, "无法读取文件或文件夹")
+		}
+		return
+	}
+	entries, err := a.snapshotValidatedSources(r.Context(), validated, true)
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "所选项目过多或目录结构无效")
+		return
+	}
+	if len(entries) > maxZipEntries {
+		writeError(w, http.StatusRequestEntityTooLarge, "所选项目超过整包下载上限")
+		return
+	}
+	var totalSize int64
+	for _, entry := range entries {
+		if entry.Kind == "file" {
+			totalSize += entry.Size
+		}
+	}
+	mode := "stream"
+	if len(entries) <= smallZipEntries && totalSize <= a.cfg.ZipThreshold && a.cacheHasSpace() {
+		mode = "cached"
+	}
+	id := randomID(24)
+	now := time.Now()
+	expiresAt := now.Add(downloadPackageTTL).Unix()
+	filename := validated[0].Source.Name + ".zip"
+	if len(validated) > 1 {
+		filename = fmt.Sprintf("已选%d项.zip", len(validated))
+	}
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, 500, "数据库暂不可用")
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(r.Context(), `INSERT INTO download_packages(id,created_by,filename,zip_mode,expires_at,created_at,entry_count,total_size) VALUES(?,?,?,?,?,?,?,?)`,
+		id, r.Header.Get("X-Auth-Request-User"), filename, mode, expiresAt, now.Unix(), len(entries), totalSize); err != nil {
+		writeError(w, 500, "无法创建下载包")
+		return
+	}
+	stmt, err := tx.PrepareContext(r.Context(), `INSERT INTO download_package_entries(package_id,ordinal,archive_path,source_path,kind,size,modified) VALUES(?,?,?,?,?,?,?)`)
+	if err != nil {
+		writeError(w, 500, "无法保存下载清单")
+		return
+	}
+	for i, entry := range entries {
+		if _, err := stmt.ExecContext(r.Context(), id, i, entry.RelativePath, entry.SourcePath, entry.Kind, entry.Size, entry.Modified); err != nil {
+			_ = stmt.Close()
+			writeError(w, 500, "无法保存下载清单")
+			return
+		}
+	}
+	_ = stmt.Close()
+	if err := tx.Commit(); err != nil {
+		writeError(w, 500, "无法创建下载包")
+		return
+	}
+	a.audit("", "download_package_created", r.Header.Get("X-Auth-Request-User"), id)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id": id, "url": a.cfg.PublicBaseURL + "/share-api/v1/download-packages/" + id,
+		"expiresAt": expiresAt, "entryCount": len(entries), "totalSize": totalSize, "zipMode": mode,
+	})
+}
+
+func (a *app) downloadPackage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("ticket")
+	if !validToken(id) {
+		http.NotFound(w, r)
+		return
+	}
+	var filename, mode string
+	var expiresAt, entryCount, totalSize int64
+	err := a.db.QueryRowContext(r.Context(), `SELECT filename,zip_mode,expires_at,entry_count,total_size FROM download_packages WHERE id=?`, id).
+		Scan(&filename, &mode, &expiresAt, &entryCount, &totalSize)
+	if err != nil {
+		writeError(w, http.StatusGone, "下载包不存在或已失效")
+		return
+	}
+	if expiresAt <= time.Now().Unix() {
+		_, _ = a.db.ExecContext(r.Context(), `DELETE FROM download_packages WHERE id=?`, id)
+		_ = os.Remove(a.packageCachePath(id))
+		writeError(w, http.StatusGone, "下载包已失效")
+		return
+	}
+	entries, err := a.loadPackageArchiveEntries(r.Context(), id, entryCount)
+	if err != nil {
+		writeError(w, 500, "无法读取下载清单")
+		return
+	}
+	w.Header().Set("Content-Disposition", contentDisposition(filename))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Cache-Control", "private, no-store")
+	if mode == "cached" {
+		lockValue, _ := a.zipLocks.LoadOrStore("package:"+id, &sync.Mutex{})
+		lock := lockValue.(*sync.Mutex)
+		lock.Lock()
+		defer lock.Unlock()
+		cacheFile := a.packageCachePath(id)
+		if _, err := os.Stat(cacheFile); errors.Is(err, os.ErrNotExist) {
+			if err := a.buildCachedArchive(r.Context(), cacheFile, entries); err != nil {
+				log.Printf("zip build failed for download package %s: %v", id, err)
+				writeError(w, http.StatusConflict, "源文件已变化，请重新选择后下载")
+				return
+			}
+		}
+		file, err := os.Open(cacheFile)
+		if err != nil {
+			writeError(w, 500, "缓存文件暂不可用")
+			return
+		}
+		defer file.Close()
+		info, _ := file.Stat()
+		_ = os.Chtimes(cacheFile, time.Now(), time.Now())
+		http.ServeContent(w, r, filename, info.ModTime(), file)
+	} else {
+		w.Header().Set("X-Zip-Mode", "stream")
+		zw := zip.NewWriter(w)
+		if err := a.writeArchive(r.Context(), zw, entries); err != nil {
+			log.Printf("streaming zip failed for download package %s: %v", id, err)
+		}
+		_ = zw.Close()
+	}
+	a.audit("", "download_package_downloaded", r.Header.Get("X-Auth-Request-User"), fmt.Sprintf("%s:%s:%d", id, mode, totalSize))
+}
+
+func (a *app) loadPackageArchiveEntries(ctx context.Context, packageID string, capacity int64) ([]entryRecord, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT archive_path,source_path,kind,size,modified FROM download_package_entries WHERE package_id=? ORDER BY ordinal`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := make([]entryRecord, 0, capacity)
+	for rows.Next() {
+		var entry entryRecord
+		if err := rows.Scan(&entry.RelativePath, &entry.SourcePath, &entry.Kind, &entry.Size, &entry.Modified); err != nil {
+			return nil, err
+		}
+		entry.Name = pathBase(entry.RelativePath)
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (a *app) packageCachePath(packageID string) string {
+	return path.Join(a.cfg.CacheDir, "package-"+packageID+".zip")
 }
 
 func (a *app) listShares(w http.ResponseWriter, r *http.Request) {
@@ -807,18 +1247,29 @@ func (a *app) refreshShare(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "分享不存在")
 		return
 	}
-	item, err := a.findExact(r.Context(), s.SourcePath)
+	requested := decodeStoredSources(s)
+	validated, err := a.validateSources(r.Context(), requested)
 	if err != nil {
-		writeError(w, 409, "源文件或文件夹已不存在")
+		writeError(w, http.StatusConflict, "源文件或文件夹已不存在或发生变化")
 		return
 	}
-	entries := []entryRecord{}
-	if s.SourceType == "folder" {
-		entries, err = a.snapshotFolder(r.Context(), s.SourcePath)
-		if err != nil || len(entries) > maxManifestEntries {
-			writeError(w, 409, "无法刷新文件夹清单")
-			return
-		}
+	kind := validated[0].Source.Type
+	if len(validated) > 1 {
+		kind = "folder"
+	}
+	entries, err := a.snapshotValidatedSources(r.Context(), validated, len(validated) > 1)
+	if err != nil || len(entries) > maxManifestEntries {
+		writeError(w, http.StatusConflict, "无法刷新文件夹清单")
+		return
+	}
+	storedSources := make([]shareSource, len(validated))
+	for i, source := range validated {
+		storedSources[i] = source.Source
+	}
+	sourcesJSON, _ := json.Marshal(storedSources)
+	name := validated[0].Source.Name
+	if len(validated) > 1 {
+		name = fmt.Sprintf("已选%d项", len(validated))
 	}
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -829,8 +1280,8 @@ func (a *app) refreshShare(w http.ResponseWriter, r *http.Request) {
 	_, _ = tx.ExecContext(r.Context(), `DELETE FROM entries WHERE share_id=?`, id)
 	var total int64
 	for _, e := range entries {
-		if _, err := tx.ExecContext(r.Context(), `INSERT INTO entries(id,share_id,relative_path,parent_path,name,kind,size,modified) VALUES(?,?,?,?,?,?,?,?)`,
-			e.ID, id, e.RelativePath, e.ParentPath, e.Name, e.Kind, e.Size, e.Modified); err != nil {
+		if _, err := tx.ExecContext(r.Context(), `INSERT INTO entries(id,share_id,relative_path,parent_path,name,kind,size,modified,source_path) VALUES(?,?,?,?,?,?,?,?,?)`,
+			e.ID, id, e.RelativePath, e.ParentPath, e.Name, e.Kind, e.Size, e.Modified, e.SourcePath); err != nil {
 			writeError(w, 500, "无法保存清单")
 			return
 		}
@@ -838,8 +1289,8 @@ func (a *app) refreshShare(w http.ResponseWriter, r *http.Request) {
 			total += e.Size
 		}
 	}
-	_, err = tx.ExecContext(r.Context(), `UPDATE shares SET source_size=?,source_modified=?,entry_count=?,total_size=?,updated_at=? WHERE id=?`,
-		itemSize(item), itemModified(item), len(entries), total, time.Now().Unix(), id)
+	_, err = tx.ExecContext(r.Context(), `UPDATE shares SET source_path=?,source_type=?,source_name=?,source_size=?,source_modified=?,sources_json=?,entry_count=?,total_size=?,updated_at=? WHERE id=?`,
+		validated[0].Source.SourcePath, kind, name, itemSize(validated[0].Item), itemModified(validated[0].Item), string(sourcesJSON), len(entries), total, time.Now().Unix(), id)
 	if err != nil || tx.Commit() != nil {
 		writeError(w, 500, "刷新失败")
 		return
@@ -848,6 +1299,17 @@ func (a *app) refreshShare(w http.ResponseWriter, r *http.Request) {
 	_ = os.Remove(a.cachePath(id))
 	a.audit(id, "refreshed", r.Header.Get("X-Auth-Request-User"), "")
 	writeJSON(w, 200, map[string]any{"refreshed": true, "entryCount": len(entries), "totalSize": total})
+}
+
+func decodeStoredSources(s shareRecord) []shareSource {
+	var sources []shareSource
+	if s.SourcesJSON != "" {
+		_ = json.Unmarshal([]byte(s.SourcesJSON), &sources)
+	}
+	if len(sources) == 0 {
+		sources = []shareSource{{SourcePath: s.SourcePath, Type: s.SourceType, Name: s.SourceName}}
+	}
+	return sources
 }
 
 func (a *app) verifyCode(w http.ResponseWriter, r *http.Request) {
@@ -901,13 +1363,35 @@ func (a *app) publicEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parent := normalizeRelativePath(r.URL.Query().Get("path"))
+	items := make([]map[string]any, 0)
+	// Multi-source shares have a virtual root: every explicitly shared source
+	// is shown as an independent item even if its preserved manifest path has
+	// ancestors that were not themselves selected.
+	if parent == "" {
+		sources := decodeStoredSources(s)
+		if len(sources) > 1 {
+			for _, source := range sources {
+				var id, rel, name, kind, modified string
+				var size int64
+				err := a.db.QueryRowContext(r.Context(), `SELECT id,relative_path,name,kind,size,modified FROM entries WHERE share_id=? AND source_path=? LIMIT 1`, s.ID, source.SourcePath).
+					Scan(&id, &rel, &name, &kind, &size, &modified)
+				if err == nil {
+					items = append(items, map[string]any{"id": id, "path": rel, "name": name, "type": kind, "size": size, "modified": modified})
+				}
+			}
+			writeJSON(w, 200, map[string]any{
+				"title": s.Title, "path": parent, "entries": items,
+				"canZip": s.EntryCount <= maxZipEntries, "zipMode": zipMode(s, a.cfg.ZipThreshold), "multiSource": true,
+			})
+			return
+		}
+	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT id,relative_path,name,kind,size,modified FROM entries WHERE share_id=? AND parent_path=? ORDER BY kind DESC,name COLLATE NOCASE LIMIT 5000`, s.ID, parent)
 	if err != nil {
 		writeError(w, 500, "无法读取文件夹")
 		return
 	}
 	defer rows.Close()
-	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, rel, name, kind, modified string
 		var size int64
@@ -936,9 +1420,26 @@ func (a *app) createDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	mode := "file"
 	entryID := ""
+	selectionJSON := ""
 	if s.SourceType == "folder" {
 		if in.Zip {
-			if s.EntryCount > maxZipEntries {
+			if len(in.EntryIDs) > maxSelectedSources {
+				writeError(w, http.StatusRequestEntityTooLarge, "一次最多选择128个项目")
+				return
+			}
+			if len(in.EntryIDs) > 0 {
+				selectedEntries, selectedIDs, err := a.loadSelectedShareArchiveEntries(r.Context(), s, in.EntryIDs)
+				if err != nil {
+					writeError(w, http.StatusBadRequest, "所选项目无效，请刷新页面后重试")
+					return
+				}
+				if len(selectedEntries) > maxZipEntries {
+					writeError(w, http.StatusConflict, "所选项目过多，不支持打包下载")
+					return
+				}
+				encoded, _ := json.Marshal(selectedIDs)
+				selectionJSON = string(encoded)
+			} else if s.EntryCount > maxZipEntries {
 				writeError(w, 409, "该文件夹项目过多，不支持整包下载")
 				return
 			}
@@ -975,7 +1476,7 @@ func (a *app) createDownload(w http.ResponseWriter, r *http.Request) {
 	if expires.Valid && ticketExp > expires.Int64 {
 		ticketExp = expires.Int64
 	}
-	if _, err := tx.ExecContext(r.Context(), `INSERT INTO tickets(id,share_id,entry_id,mode,expires_at,created_at) VALUES(?,?,?,?,?,?)`, id, s.ID, nullableString(entryID), mode, ticketExp, time.Now().Unix()); err != nil {
+	if _, err := tx.ExecContext(r.Context(), `INSERT INTO tickets(id,share_id,entry_id,selection_json,mode,expires_at,created_at) VALUES(?,?,?,?,?,?,?)`, id, s.ID, nullableString(entryID), selectionJSON, mode, ticketExp, time.Now().Unix()); err != nil {
 		writeError(w, 500, "无法创建下载")
 		return
 	}
@@ -988,7 +1489,7 @@ func (a *app) createDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.audit(s.ID, "download_ticket", "guest", mode)
-	writeJSON(w, 201, map[string]any{"url": a.cfg.PublicBaseURL + "/d/" + id, "expiresAt": ticketExp, "mode": mode})
+	writeJSON(w, 201, map[string]any{"url": a.cfg.PublicBaseURL + "/d/" + id, "expiresAt": ticketExp, "mode": mode, "selectedCount": len(in.EntryIDs)})
 }
 
 func (a *app) download(w http.ResponseWriter, r *http.Request) {
@@ -997,10 +1498,10 @@ func (a *app) download(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var shareID, mode string
+	var shareID, mode, selectionJSON string
 	var entryID sql.NullString
 	var ticketExp int64
-	err := a.db.QueryRowContext(r.Context(), `SELECT share_id,entry_id,mode,expires_at FROM tickets WHERE id=?`, id).Scan(&shareID, &entryID, &mode, &ticketExp)
+	err := a.db.QueryRowContext(r.Context(), `SELECT share_id,entry_id,selection_json,mode,expires_at FROM tickets WHERE id=?`, id).Scan(&shareID, &entryID, &selectionJSON, &mode, &ticketExp)
 	if err != nil || ticketExp <= time.Now().Unix() {
 		writeError(w, 410, "下载链接已失效")
 		return
@@ -1011,7 +1512,12 @@ func (a *app) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if mode == "zip" {
-		a.downloadZip(w, r, s)
+		var selectedIDs []string
+		if selectionJSON != "" && json.Unmarshal([]byte(selectionJSON), &selectedIDs) != nil {
+			writeError(w, 410, "下载选择已失效")
+			return
+		}
+		a.downloadZip(w, r, s, selectedIDs)
 		return
 	}
 	source := s.SourcePath
@@ -1024,7 +1530,10 @@ func (a *app) download(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 404, "文件不存在")
 			return
 		}
-		source = joinWindowsPath(s.SourcePath, e.RelativePath)
+		source = e.SourcePath
+		if source == "" {
+			source = joinWindowsPath(s.SourcePath, e.RelativePath)
+		}
 		name, size, modified = e.Name, e.Size, e.Modified
 	}
 	current, err := a.findExact(r.Context(), source)
@@ -1049,8 +1558,16 @@ func (a *app) download(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
-func (a *app) downloadZip(w http.ResponseWriter, r *http.Request, s shareRecord) {
-	cacheEligible := s.TotalSize <= a.cfg.ZipThreshold && s.EntryCount <= smallZipEntries && a.cacheHasSpace()
+func (a *app) downloadZip(w http.ResponseWriter, r *http.Request, s shareRecord, selectedIDs []string) {
+	entries, err := a.loadShareArchiveEntries(r.Context(), s)
+	if len(selectedIDs) > 0 {
+		entries, _, err = a.loadSelectedShareArchiveEntries(r.Context(), s, selectedIDs)
+	}
+	if err != nil {
+		writeError(w, 500, "无法读取压缩清单")
+		return
+	}
+	cacheEligible := len(selectedIDs) == 0 && s.TotalSize <= a.cfg.ZipThreshold && s.EntryCount <= smallZipEntries && a.cacheHasSpace()
 	if cacheEligible {
 		lockValue, _ := a.zipLocks.LoadOrStore(s.ID, &sync.Mutex{})
 		lock := lockValue.(*sync.Mutex)
@@ -1058,7 +1575,7 @@ func (a *app) downloadZip(w http.ResponseWriter, r *http.Request, s shareRecord)
 		defer lock.Unlock()
 		cacheFile := a.cachePath(s.ID)
 		if _, err := os.Stat(cacheFile); errors.Is(err, os.ErrNotExist) {
-			if err := a.buildCachedZip(r.Context(), s, cacheFile); err != nil {
+			if err := a.buildCachedArchive(r.Context(), cacheFile, entries); err != nil {
 				log.Printf("zip build failed for share %s: %v", s.ID, err)
 				writeError(w, 409, "文件夹内容已变化，请联系分享者刷新分享")
 				return
@@ -1083,39 +1600,160 @@ func (a *app) downloadZip(w http.ResponseWriter, r *http.Request, s shareRecord)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Zip-Mode", "stream")
 	zw := zip.NewWriter(w)
-	defer zw.Close()
-	rows, err := a.db.QueryContext(r.Context(), `SELECT relative_path,size FROM entries WHERE share_id=? AND kind='file' ORDER BY relative_path`, s.ID)
+	if err := a.writeArchive(r.Context(), zw, entries); err != nil {
+		log.Printf("streaming zip failed for share %s: %v", s.ID, err)
+	}
+	_ = zw.Close()
+}
+
+func (a *app) loadShareArchiveEntries(ctx context.Context, s shareRecord) ([]entryRecord, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT id,relative_path,parent_path,name,kind,size,modified,source_path FROM entries WHERE share_id=? ORDER BY relative_path`, s.ID)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer rows.Close()
+	entries := make([]entryRecord, 0, s.EntryCount)
 	for rows.Next() {
-		var rel string
-		var size int64
-		if rows.Scan(&rel, &size) != nil {
+		var entry entryRecord
+		if err := rows.Scan(&entry.ID, &entry.RelativePath, &entry.ParentPath, &entry.Name, &entry.Kind, &entry.Size, &entry.Modified, &entry.SourcePath); err != nil {
+			return nil, err
+		}
+		if entry.SourcePath == "" {
+			entry.SourcePath = joinWindowsPath(s.SourcePath, entry.RelativePath)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (a *app) loadSelectedShareArchiveEntries(ctx context.Context, s shareRecord, requestedIDs []string) ([]entryRecord, []string, error) {
+	if len(requestedIDs) == 0 {
+		return nil, nil, errors.New("no selected entries")
+	}
+	all, err := a.loadShareArchiveEntries(ctx, s)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID := make(map[string]entryRecord, len(all))
+	for _, entry := range all {
+		byID[entry.ID] = entry
+	}
+	selected := make([]entryRecord, 0, len(requestedIDs))
+	seen := make(map[string]bool, len(requestedIDs))
+	for _, id := range requestedIDs {
+		id = strings.TrimSpace(id)
+		entry, ok := byID[id]
+		if id == "" || !ok {
+			return nil, nil, errors.New("selected entry does not belong to share")
+		}
+		if !seen[id] {
+			seen[id] = true
+			selected = append(selected, entry)
+		}
+	}
+	if len(selected) == 0 {
+		return nil, nil, errors.New("no selected entries")
+	}
+
+	// A selected folder already contains every selected descendant.
+	roots := make([]entryRecord, 0, len(selected))
+	for i, candidate := range selected {
+		covered := false
+		for j, parent := range selected {
+			if i != j && parent.Kind == "folder" && archivePathDescendant(parent.RelativePath, candidate.RelativePath) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			roots = append(roots, candidate)
+		}
+	}
+	names := make([]string, len(roots))
+	rootIDs := make([]string, len(roots))
+	for i, root := range roots {
+		names[i], rootIDs[i] = root.Name, root.ID
+	}
+	bases, err := uniqueArchiveNames(names)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := make([]entryRecord, 0)
+	for i, root := range roots {
+		for _, entry := range all {
+			if !strings.EqualFold(entry.RelativePath, root.RelativePath) &&
+				!(root.Kind == "folder" && archivePathDescendant(root.RelativePath, entry.RelativePath)) {
+				continue
+			}
+			suffix := strings.TrimPrefix(entry.RelativePath, root.RelativePath)
+			suffix = strings.TrimPrefix(suffix, "\\")
+			entry.RelativePath = bases[i]
+			if suffix != "" {
+				entry.RelativePath += "\\" + suffix
+			}
+			entry.ParentPath = relativeParent(entry.RelativePath)
+			result = append(result, entry)
+			if len(result) > maxZipEntries {
+				return nil, nil, errors.New("selected entry limit exceeded")
+			}
+		}
+	}
+	return result, rootIDs, nil
+}
+
+func archivePathDescendant(parent, candidate string) bool {
+	parent = strings.TrimRight(strings.ToLower(parent), "\\")
+	candidate = strings.TrimRight(strings.ToLower(candidate), "\\")
+	return parent != candidate && strings.HasPrefix(candidate, parent+"\\")
+}
+
+func (a *app) writeArchive(ctx context.Context, zw *zip.Writer, entries []entryRecord) error {
+	for _, entry := range entries {
+		archivePath, err := safeArchivePath(entry.RelativePath)
+		if err != nil {
+			return err
+		}
+		name := strings.ReplaceAll(archivePath, "\\", "/")
+		if entry.Kind == "folder" {
+			header := &zip.FileHeader{Name: name + "/", Method: zip.Store}
+			header.SetModTime(time.Now())
+			if _, err := zw.CreateHeader(header); err != nil {
+				return err
+			}
 			continue
 		}
-		resp, err := a.openEverything(r.Context(), joinWindowsPath(s.SourcePath, rel), "")
-		if err != nil || resp.StatusCode != 200 || (resp.ContentLength >= 0 && resp.ContentLength != size) {
-			if resp != nil {
-				_ = resp.Body.Close()
-			}
-			return
+		current, err := a.findExact(ctx, entry.SourcePath)
+		if err != nil || itemSize(current) != entry.Size || itemModified(current) != entry.Modified {
+			return errors.New("source changed")
 		}
-		h := &zip.FileHeader{Name: strings.ReplaceAll(rel, "\\", "/"), Method: zip.Deflate}
-		h.SetModTime(time.Now())
-		part, err := zw.CreateHeader(h)
+		resp, err := a.openEverything(ctx, entry.SourcePath, "")
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusOK || (resp.ContentLength >= 0 && resp.ContentLength != entry.Size) {
+			_ = resp.Body.Close()
+			return errors.New("source changed")
+		}
+		header := &zip.FileHeader{Name: name, Method: zip.Deflate}
+		header.SetModTime(time.Now())
+		part, err := zw.CreateHeader(header)
+		var written int64
 		if err == nil {
-			_, err = io.Copy(part, resp.Body)
+			written, err = io.Copy(part, resp.Body)
 		}
 		_ = resp.Body.Close()
 		if err != nil {
-			return
+			return err
+		}
+		if written != entry.Size {
+			return errors.New("source changed")
 		}
 	}
+	return nil
 }
 
-func (a *app) buildCachedZip(ctx context.Context, s shareRecord, target string) error {
+func (a *app) buildCachedArchive(ctx context.Context, target string, entries []entryRecord) error {
 	tmp := target + ".tmp-" + randomID(6)
 	_ = os.Remove(tmp)
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -1130,35 +1768,9 @@ func (a *app) buildCachedZip(ctx context.Context, s shareRecord, target string) 
 		}
 	}()
 	zw := zip.NewWriter(f)
-	rows, err := a.db.QueryContext(ctx, `SELECT relative_path,size FROM entries WHERE share_id=? AND kind='file' ORDER BY relative_path`, s.ID)
-	if err != nil {
+	if err := a.writeArchive(ctx, zw, entries); err != nil {
+		_ = zw.Close()
 		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var rel string
-		var size int64
-		if err := rows.Scan(&rel, &size); err != nil {
-			return err
-		}
-		resp, err := a.openEverything(ctx, joinWindowsPath(s.SourcePath, rel), "")
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != 200 || (resp.ContentLength >= 0 && resp.ContentLength != size) {
-			_ = resp.Body.Close()
-			return errors.New("source changed")
-		}
-		h := &zip.FileHeader{Name: strings.ReplaceAll(rel, "\\", "/"), Method: zip.Deflate}
-		h.SetModTime(time.Now())
-		part, err := zw.CreateHeader(h)
-		if err == nil {
-			_, err = io.Copy(part, resp.Body)
-		}
-		_ = resp.Body.Close()
-		if err != nil {
-			return err
-		}
 	}
 	if err := zw.Close(); err != nil {
 		return err
@@ -1235,6 +1847,20 @@ func (a *app) cleanCache() {
 			total -= f.size
 		}
 	}
+	var expiredPackages []string
+	if rows, err := a.db.Query(`SELECT id FROM download_packages WHERE expires_at<?`, now.Unix()); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				expiredPackages = append(expiredPackages, id)
+			}
+		}
+		_ = rows.Close()
+	}
+	for _, id := range expiredPackages {
+		_ = os.Remove(a.packageCachePath(id))
+	}
+	_, _ = a.db.Exec(`DELETE FROM download_packages WHERE expires_at<?`, now.Unix())
 	_, _ = a.db.Exec(`DELETE FROM tickets WHERE expires_at<?`, now.Unix())
 	_, _ = a.db.Exec(`DELETE FROM failed_attempts WHERE failed_at<?`, now.Add(-24*time.Hour).Unix())
 }
@@ -1280,7 +1906,7 @@ func (a *app) snapshotFolder(ctx context.Context, root string) ([]entryRecord, e
 			}
 			out = append(out, entryRecord{
 				ID: randomID(16), RelativePath: rel, ParentPath: relativeParent(rel), Name: item.Name,
-				Kind: normalizeType(item.Type), Size: itemSize(item), Modified: itemModified(item),
+				Kind: normalizeType(item.Type), Size: itemSize(item), Modified: itemModified(item), SourcePath: joinWindowsPath(root, rel),
 			})
 			if len(out) > maxManifestEntries {
 				return out, nil
@@ -1333,24 +1959,33 @@ func (a *app) openEverything(ctx context.Context, source, byteRange string) (*ht
 }
 
 func everythingDownloadPath(source string) string {
-	parts := strings.Split(strings.ReplaceAll(source, "/", "\\"), "\\")
+	source = strings.ReplaceAll(source, "/", "\\")
+	unc := strings.HasPrefix(source, `\\`)
+	if unc {
+		source = strings.TrimPrefix(source, `\\`)
+	}
+	parts := strings.Split(source, "\\")
 	for i, part := range parts {
 		escaped := url.PathEscape(part)
 		escaped = strings.ReplaceAll(escaped, ":", "%3A")
 		parts[i] = escaped
 	}
-	return "/" + strings.Join(parts, "/")
+	prefix := "/"
+	if unc {
+		prefix = "//"
+	}
+	return prefix + strings.Join(parts, "/")
 }
 
 func (a *app) loadShareByID(ctx context.Context, id string) (shareRecord, error) {
-	return scanShare(a.db.QueryRowContext(ctx, `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size FROM shares WHERE id=?`, id))
+	return scanShare(a.db.QueryRowContext(ctx, `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size,sources_json FROM shares WHERE id=?`, id))
 }
 
 func (a *app) loadActiveShareByToken(ctx context.Context, token string) (shareRecord, error) {
 	if !validToken(token) {
 		return shareRecord{}, sql.ErrNoRows
 	}
-	s, err := scanShare(a.db.QueryRowContext(ctx, `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size FROM shares WHERE token=?`, token))
+	s, err := scanShare(a.db.QueryRowContext(ctx, `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size,sources_json FROM shares WHERE token=?`, token))
 	if err != nil || !shareUsable(s) {
 		return shareRecord{}, sql.ErrNoRows
 	}
@@ -1362,14 +1997,14 @@ type rowScanner interface{ Scan(...any) error }
 func scanShare(row rowScanner) (shareRecord, error) {
 	var s shareRecord
 	err := row.Scan(&s.ID, &s.Token, &s.Title, &s.SourcePath, &s.SourceType, &s.SourceName, &s.SourceSize, &s.SourceMod,
-		&s.CodeHash, &s.ExpiresAt, &s.MaxDownloads, &s.Downloads, &s.Status, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt, &s.EntryCount, &s.TotalSize)
+		&s.CodeHash, &s.ExpiresAt, &s.MaxDownloads, &s.Downloads, &s.Status, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt, &s.EntryCount, &s.TotalSize, &s.SourcesJSON)
 	return s, err
 }
 
 func (a *app) loadEntry(ctx context.Context, shareID, id string) (entryRecord, error) {
 	var e entryRecord
-	err := a.db.QueryRowContext(ctx, `SELECT id,share_id,relative_path,parent_path,name,kind,size,modified FROM entries WHERE share_id=? AND id=?`, shareID, id).
-		Scan(&e.ID, &e.ShareID, &e.RelativePath, &e.ParentPath, &e.Name, &e.Kind, &e.Size, &e.Modified)
+	err := a.db.QueryRowContext(ctx, `SELECT id,share_id,relative_path,parent_path,name,kind,size,modified,source_path FROM entries WHERE share_id=? AND id=?`, shareID, id).
+		Scan(&e.ID, &e.ShareID, &e.RelativePath, &e.ParentPath, &e.Name, &e.Kind, &e.Size, &e.Modified, &e.SourcePath)
 	return e, err
 }
 
@@ -1390,7 +2025,7 @@ func (a *app) authorizedGuest(r *http.Request, token string) (shareRecord, bool)
 	if !validToken(token) {
 		return shareRecord{}, false
 	}
-	s, err := scanShare(a.db.QueryRowContext(r.Context(), `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size FROM shares WHERE token=?`, token))
+	s, err := scanShare(a.db.QueryRowContext(r.Context(), `SELECT id,token,title,source_path,source_type,source_name,source_size,source_modified,code_hash,expires_at,max_downloads,download_count,status,created_by,created_at,updated_at,entry_count,total_size,sources_json FROM shares WHERE token=?`, token))
 	if err != nil || !shareTicketUsable(s) {
 		return shareRecord{}, false
 	}
@@ -1533,6 +2168,23 @@ func parseExpiry(v string) (int64, error) {
 
 func cleanWindowsPath(v string) (string, error) {
 	v = strings.TrimSpace(strings.ReplaceAll(v, "/", "\\"))
+	if strings.HasPrefix(v, `\\`) {
+		parts := strings.Split(strings.TrimPrefix(v, `\\`), "\\")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part == "" || part == "." {
+				continue
+			}
+			if part == ".." || strings.ContainsAny(part, "\x00:") {
+				return "", errors.New("unsafe UNC path")
+			}
+			out = append(out, part)
+		}
+		if len(out) < 2 {
+			return "", errors.New("UNC server and share are required")
+		}
+		return `\\` + strings.Join(out, "\\"), nil
+	}
 	if !regexp.MustCompile(`^[A-Za-z]:\\`).MatchString(v) {
 		return "", errors.New("absolute Windows path required")
 	}
@@ -1542,7 +2194,7 @@ func cleanWindowsPath(v string) (string, error) {
 		if p == "" || p == "." {
 			continue
 		}
-		if p == ".." || strings.ContainsAny(p, "\x00") {
+		if p == ".." || strings.ContainsAny(p, "\x00:") {
 			return "", errors.New("unsafe path")
 		}
 		out = append(out, p)
