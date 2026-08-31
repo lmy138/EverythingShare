@@ -226,7 +226,7 @@
       }
       if (pathname.startsWith('\\\\')) return normalizePath(pathname);
       const decoded = pathname.replace(/^\\+/, '');
-      return /^[A-Za-z]:\\/.test(decoded) ? normalizePath(decoded) : '';
+      return /^[A-Za-z]:(?:\\|$)/.test(decoded) ? normalizePath(decoded) : '';
     } catch { return ''; }
   }
 
@@ -329,6 +329,19 @@
     target.replaceChildren(icon, label);
   }
 
+  function ensureParentDirectoryIcon() {
+    document.querySelectorAll('td.updir a[href]').forEach((target) => {
+      if (target.querySelector('.ev-file-icon')) return;
+      target.querySelectorAll('img.icon').forEach((icon) => icon.remove());
+      target.classList.add('ev-file-entry');
+      const icon = document.createElement('span');
+      icon.className = 'ev-file-icon ev-type-folder';
+      icon.setAttribute('aria-hidden', 'true');
+      renderFileIcon(icon, 'folder', '');
+      target.prepend(icon);
+    });
+  }
+
   function login(returnTo = location.href) {
     const rd = new URL(returnTo, location.origin).href;
     location.assign(`${LOGIN_PATH}?rd=${encodeURIComponent(rd)}`);
@@ -419,6 +432,12 @@
     if (!headerRow.querySelector('.ev-actions-header')) {
       const cell = document.createElement('td'); cell.className = 'ev-actions-header'; cell.textContent = '操作'; headerRow.append(cell);
     }
+    const columnCount = headerRow.children.length;
+    [...table.rows].forEach((row) => {
+      if (row === headerRow || row.matches('.trdata1,.trdata2')) return;
+      const spanningCell = row.children.length === 1 ? row.cells[0] : null;
+      if (spanningCell?.hasAttribute('colspan')) spanningCell.colSpan = columnCount;
+    });
     if (table.dataset.evResizable === 'true') return;
     table.dataset.evResizable = 'true'; table.classList.add('ev-resizable-table');
     const colgroup = document.createElement('colgroup');
@@ -624,7 +643,7 @@
       window.addEventListener('scroll', requestBatchBarPosition, { passive: true });
       window.addEventListener('resize', requestBatchBarPosition, { passive: true });
     }
-    const enhance = () => { localizeEverythingUI(); normalizeTableStructure(); addToolbar(); enhanceRows(); installColumnSizing(); addBatchBar(); updateSelectionUI(); };
+    const enhance = () => { localizeEverythingUI(); normalizeTableStructure(); ensureParentDirectoryIcon(); addToolbar(); enhanceRows(); installColumnSizing(); addBatchBar(); updateSelectionUI(); };
     enhance();
     let scheduled = false;
     const observerOptions = { childList: true, subtree: true };
