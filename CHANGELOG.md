@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-08-31
+
+- Fixed drive-root rows on the home page to use the same Windows system folder icons and aligned columns as search results.
+- Replaced the native parent-directory icon on folder pages with the same Windows system folder icon used by regular folders.
+
 ## 0.4.0 - 2026-08-26
 
 - Added cross-page multi-selection for files and folders, with batch sharing and ZIP downloads.

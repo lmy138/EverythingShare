@@ -42,12 +42,12 @@ EverythingShare 不复制文件。它通过 Everything HTTP Server 读取文件�
 
 | 使用场景 | 下载文件 | 是否需要预装 Everything |
 |---|---|---|
-| 已安装 Everything，只需要增加 EverythingShare | `EverythingShare-v0.4.0-windows-amd64.zip` | 需要，支持 Everything 1.4/1.5 |
+| 已安装 Everything，只需要增加 EverythingShare | `EverythingShare-v0.4.1-windows-amd64.zip` | 需要，支持 Everything 1.4/1.5 |
 | 全新电脑，希望一步完成 Everything 与 EverythingShare | `EverythingShare-OneClick-windows-x64.exe` | 不需要，已内置官方 Everything 1.4.1.1032 x64 便携版 |
 
 ### 已经安装 Everything
 
-下载并解压 `EverythingShare-v0.4.0-windows-amd64.zip`，双击 `EverythingShare.exe`。按照原有向导填写现有 Everything HTTP Server 的地址与凭据，再设置 EverythingShare BasicAuth 账号。
+下载并解压 `EverythingShare-v0.4.1-windows-amd64.zip`，双击 `EverythingShare.exe`。按照原有向导填写现有 Everything HTTP Server 的地址与凭据，再设置 EverythingShare BasicAuth 账号。
 
 ### 尚未安装 Everything：OneClick
 

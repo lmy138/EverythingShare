@@ -44,12 +44,12 @@ All demo data is fictional. The screenshots contain no real file names, accounts
 
 | Scenario | Download | Preinstalled Everything required |
 |---|---|---|
-| Everything is already installed; add EverythingShare only | `EverythingShare-v0.4.0-windows-amd64.zip` | Yes, Everything 1.4/1.5 |
+| Everything is already installed; add EverythingShare only | `EverythingShare-v0.4.1-windows-amd64.zip` | Yes, Everything 1.4/1.5 |
 | Fresh PC; install Everything and EverythingShare together | `EverythingShare-OneClick-windows-x64.exe` | No; it embeds the official Everything 1.4.1.1032 x64 portable build |
 
 ### Everything is already installed
 
-Download and extract `EverythingShare-v0.4.0-windows-amd64.zip`, then run `EverythingShare.exe`. The existing wizard asks for the current Everything HTTP Server URL and credentials, followed by the EverythingShare Basic Auth account.
+Download and extract `EverythingShare-v0.4.1-windows-amd64.zip`, then run `EverythingShare.exe`. The existing wizard asks for the current Everything HTTP Server URL and credentials, followed by the EverythingShare Basic Auth account.
 
 ### Everything is not installed: OneClick
 

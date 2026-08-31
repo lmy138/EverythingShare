@@ -147,7 +147,7 @@ tr:last-child td { border-bottom: 0; }
 }
 .numresults { margin: 0; color: var(--ev-muted); font-size: 14px; }
 .file,.folder { min-width: 220px; }
-.file a.ev-file-entry,.folder a.ev-file-entry { display: flex; min-width: 0; align-items: center; font-weight: 650; }
+.file a.ev-file-entry,.folder a.ev-file-entry,.updir a.ev-file-entry { display: flex; min-width: 0; align-items: center; font-weight: 650; }
 .ev-file-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ev-native-icon { display: none !important; }
 .ev-file-icon {
@@ -657,7 +657,7 @@ tr.trdata1:hover,tr.trdata2:hover { background: #f7fbfe; }
 }
 .numresults { color: #111827; font-size: 13px; font-weight: 600; }
 .file,.folder { min-width: 0; overflow: hidden; }
-.file a.ev-file-entry,.folder a.ev-file-entry { display: flex !important; width: 100%; max-width: 100%; min-width: 0; flex-direction: row !important; align-items: center !important; overflow: hidden; color: #0b1330; font-size: 13px; font-weight: 400; }
+.file a.ev-file-entry,.folder a.ev-file-entry,.updir a.ev-file-entry { display: flex !important; width: 100%; max-width: 100%; min-width: 0; flex-direction: row !important; align-items: center !important; overflow: hidden; color: #0b1330; font-size: 13px; font-weight: 400; }
 .ev-file-name { display: block; min-width: 0; max-width: 100%; align-self: center; flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.35; }
 .ev-file-icon {
   width: 32px;
