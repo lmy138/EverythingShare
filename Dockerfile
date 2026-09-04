@@ -1,4 +1,4 @@
-FROM golang:1.26.6-alpine3.24 AS build
+FROM golang:1.27.1-alpine3.24 AS build
 
 ENV PATH="/usr/local/go/bin:${PATH}"
 WORKDIR /src
